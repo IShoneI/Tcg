@@ -19,7 +19,7 @@ export const COLLECTIONS: CollectionConfig[] = [
   {
     name: "Claynosaurz",
     slug: "claynosaurz",
-    collectionAddress: "BkuPTNkyr7JF96MbTPNbybdbjXsYFakfLKMasVbMBqTH",
+    collectionAddress: "6mszaj17KSfVqADrQj3o4W3zoLMTykgmV37W4QadCczK",
     description: "10,000 3D animated Claynosaurz on Solana",
   },
 ];
