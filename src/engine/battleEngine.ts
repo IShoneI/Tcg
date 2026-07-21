@@ -285,7 +285,7 @@ function dealStrike(
   ));
 }
 
-function isActionLegal(state: BattleState, action: PlannedAction): boolean {
+export function isActionLegal(state: BattleState, action: PlannedAction): boolean {
   const team = state[action.teamId];
   const actor = team.members.find((member) => member.member.id === action.actorId);
   if (!actor || actor.defeated || actor.slot === "reserve") return false;
