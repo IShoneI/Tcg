@@ -94,11 +94,11 @@ export interface BattleState {
 const ACTIVE_SLOTS: Exclude<FormationSlot, "reserve">[] = ["vanguard", "left-wing", "right-wing"];
 
 export function maxHP(member: HerdMember): number {
-  return 40 + member.stats.health * 10;
+  return member.ancient?.maxHP ?? 40 + member.stats.health * 10;
 }
 
 export function strikeDamage(member: HerdMember): number {
-  return 6 + member.stats.power * 2;
+  return member.ancient?.strikeDamage ?? 6 + member.stats.power * 2;
 }
 
 export function createBattle(playerHerd: PublishedHerd, opponentHerd: PublishedHerd, seed = 1): BattleState {
@@ -566,12 +566,14 @@ function dealStrike(
     target.currentHP < target.maxHP * 0.25 &&
     target.slot !== "reserve"
   ) {
-    attackers.stampedeUsed = true;
     const slot = target.slot;
     const replacement = reserveMembers(defenders)[0];
-    target.slot = "reserve";
-    if (replacement) replacement.slot = slot;
-    state.events.push(event(state, `The stampede drives ${target.member.name} out of the battle line!`, teamId, actor.member.id, target.member.id));
+    if (replacement) {
+      attackers.stampedeUsed = true;
+      target.slot = "reserve";
+      replacement.slot = slot;
+      state.events.push(event(state, `The stampede drives ${target.member.name} out of the battle line!`, teamId, actor.member.id, target.member.id));
+    }
   }
 
   if (aSkin === "Oceania" && tierAtLeast(aSkinTier, "pack") && !attackers.undertowUsed && !target.defeated) {
@@ -779,13 +781,15 @@ function finishRound(state: BattleState, teamId: TeamId): void {
       state.events.push(event(state, `The tide restores ${team.herd.name} for ${restored}.`, teamId, undefined, undefined, restored));
     }
     if (tierAtLeast(coral, "pride")) {
-      const afflicted = activeMembers(team).find((member) => member.statuses.length > 0);
+      const afflicted = activeMembers(team).find(
+        (member) => findStatus(member, "venom") || findStatus(member, "chill")
+      );
       if (afflicted) {
         const venom = findStatus(afflicted, "venom");
         const chill = findStatus(afflicted, "chill");
         if (venom) removeStatus(afflicted, "venom");
         else if (chill && (chill.stacks ?? 1) > 1) chill.stacks = (chill.stacks ?? 1) - 1;
-        else if (chill) removeStatus(afflicted, "chill");
+        else removeStatus(afflicted, "chill");
         state.events.push(event(state, `The tide washes an affliction from ${afflicted.member.name}.`, teamId, undefined, afflicted.member.id));
       }
     }
@@ -886,6 +890,11 @@ function tieBreak(state: BattleState, a: PlannedAction, b: PlannedAction): numbe
 }
 
 function timeoutWinner(state: BattleState): TeamId | "draw" {
+  // An Ancient cannot be out-waited: stalling to the round cap loses.
+  const playerAncient = state.player.members.some((member) => member.member.ancient);
+  const opponentAncient = state.opponent.members.some((member) => member.member.ancient);
+  if (playerAncient !== opponentAncient) return playerAncient ? "player" : "opponent";
+
   const score = (team: BattleTeamState) => {
     const living = team.members.filter((member) => !member.defeated).length;
     const health = team.members.reduce((total, member) => total + member.currentHP / member.maxHP, 0);

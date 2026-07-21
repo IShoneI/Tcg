@@ -10,7 +10,7 @@ export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-[#080b10] text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-6">
-        <nav className="flex items-center justify-between"><span className="text-lg font-black tracking-tight">DINO<span className="text-amber-300">WARZ</span></span><div className="flex gap-2 text-sm"><Link href="/gallery" className="rounded-lg px-3 py-2 text-slate-400 hover:text-white">Collection</Link><Link href="/deck" className="rounded-lg px-3 py-2 text-slate-400 hover:text-white">Workshop</Link></div></nav>
+        <nav className="flex items-center justify-between"><span className="text-lg font-black tracking-tight">DINO<span className="text-amber-300">WARZ</span></span><div className="flex gap-2 text-sm"><Link href="/gallery" className="rounded-lg px-3 py-2 text-slate-400 hover:text-white">Collection</Link><Link href="/deck" className="rounded-lg px-3 py-2 text-slate-400 hover:text-white">Workshop</Link><Link href="/boss" className="rounded-lg px-3 py-2 text-orange-300 hover:text-orange-200">Ancients</Link></div></nav>
         <section className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.38em] text-amber-300">The herd is the hero</p>

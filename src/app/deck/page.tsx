@@ -15,7 +15,9 @@ import {
   validateHerd,
 } from "@/engine/herdRules";
 import { activeGroups, composeHerd } from "@/engine/herdComposition";
+import { recordPublish } from "@/engine/progression";
 import { savePublishedHerd } from "@/services/herdStorage";
+import { updateProgress } from "@/services/progressionStorage";
 import type { NFTCard } from "@/types/card";
 import type { HerdMember, PublishedHerd, Species } from "@/types/herd";
 
@@ -106,6 +108,7 @@ export default function HerdWorkshopPage() {
       const errors = validateHerd(herd);
       if (errors.length) throw new Error(errors.join(" "));
       savePublishedHerd(herd);
+      updateProgress((progress) => recordPublish(progress, herd.id));
       setMessage({ ok: true, text: `${herd.name} is published locally and ready on the battle-select screen.` });
     } catch (error) {
       setMessage({ ok: false, text: error instanceof Error ? error.message : "The herd could not be published." });

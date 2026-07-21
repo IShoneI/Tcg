@@ -46,6 +46,28 @@ export function planAIActions(
   return actions;
 }
 
+/**
+ * Ancient raid-boss planner: the solo Ancient strikes once at full strength,
+ * twice below two-thirds health and three times in its final third, always
+ * hunting the weakest standing targets.
+ */
+export function planAncientActions(state: BattleState, teamId: TeamId = "opponent"): PlannedAction[] {
+  const team = state[teamId];
+  const boss = activeMembers(team)[0];
+  if (!boss) return [];
+  const ratio = boss.currentHP / boss.maxHP;
+  const strikes = ratio > 2 / 3 ? 1 : ratio > 1 / 3 ? 2 : 3;
+  const targets = legalStrikeTargets(state, { teamId, actorId: boss.member.id })
+    .sort((a, b) => a.currentHP - b.currentHP)
+    .slice(0, strikes);
+  return targets.map((target) => ({
+    teamId,
+    actorId: boss.member.id,
+    type: "strike" as const,
+    targetId: target.member.id,
+  }));
+}
+
 function masteryTargetId(state: BattleState, teamId: TeamId, className: string): string | undefined {
   if (className === "Mender") {
     return [...activeMembers(state[teamId])].sort(

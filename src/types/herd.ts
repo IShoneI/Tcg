@@ -50,6 +50,16 @@ export interface HerdMember {
   layerCount?: number;
   classState: ClassState;
   stats: CoreStats;
+  /**
+   * PvE-only: set on Ancient one-of-ones fighting solo against a full herd.
+   * The single sanctioned exception to the equal stat budget — never allowed
+   * on a published collector herd.
+   */
+  ancient?: {
+    title: string;
+    maxHP: number;
+    strikeDamage: number;
+  };
 }
 
 export type HerdBondKind = "skin" | "colour";
