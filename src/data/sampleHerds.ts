@@ -89,14 +89,25 @@ export const SAMPLE_HERDS: PublishedHerd[] = [
     "Fast pressure and damage over time"
   ),
   createSample(
-    "aqua-wayfinders",
-    "Aqua Wayfinders",
+    "apres-avalanche",
+    "Après Avalanche",
     "Community Showcase",
-    "Coral",
-    "Aqua",
+    "Apres",
+    "White",
     ["Stalker", "Defender", "Mystic", "Warrior", "Mender", "Tracker"],
     3,
-    "#38bdf8",
-    "Formation control and opportunistic counters"
+    "#bfdbfe",
+    "Chill the enemy line and freeze key threats solid"
+  ),
+  createSample(
+    "elektra-surge",
+    "Elektra Surge",
+    "Community Showcase",
+    "Elektra",
+    "Blue",
+    ["Warrior", "Stalker", "Mystic", "Stalker", "Tracker", "Mender"],
+    2,
+    "#818cf8",
+    "Arc lightning into the back line with every opening strike"
   ),
 ];

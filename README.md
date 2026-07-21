@@ -19,6 +19,20 @@ The browser includes three sample herds so battles work before a collector publi
 - A complete qualifying locked-class lineup receives the team Mastery card, `Call of the Veterans`.
 - Holding time, purchase price and PFP status do not alter combat stats.
 
+## Skin Bonds
+
+A herd whose members share a skin fights with that skin's battlefield twist. Each bond pairs a benefit with a limitation so no skin breaks the equal stat budget:
+
+| Skin | Benefit | Limitation |
+| --- | --- | --- |
+| Apres | Strikes Chill the target; a second Chill freezes it solid, cancelling its next action | Strike damage −5% |
+| Toxic | Strikes envenom: 4 guard-ignoring damage at end of round for 2 rounds | Healing received −20% |
+| Elektra | First strike each round arcs 5 lightning into a second enemy | Guarding grants 20% instead of 25% |
+| Coral | The tide restores 3 health to active dinos each round; first heal +6 | Mastery strikes −10% |
+| Aqua | A substituted-in dino gains 10% damage reduction that round | Opening-round strikes −10% |
+| Volcanic | Dinos below half health strike 10% harder | Vanguard starts round one with 5% less mitigation |
+| Other skins / colour bonds | First substitution each match costs 0 Clay | Starting Vanguard −1 Speed in round one |
+
 ## Battle rules
 
 - Three active members: Vanguard, Left Wing and Right Wing.

@@ -13,6 +13,15 @@ export interface PlannedAction {
   reserveId?: string;
 }
 
+export type StatusKind = "chill" | "frozen" | "venom";
+
+export interface StatusEffect {
+  kind: StatusKind;
+  rounds: number;
+  stacks?: number;
+  magnitude?: number;
+}
+
 export interface BattleMemberState {
   member: HerdMember;
   currentHP: number;
@@ -22,6 +31,7 @@ export interface BattleMemberState {
   roundDamageReduction: number;
   masteryUsed: boolean;
   defeated: boolean;
+  statuses: StatusEffect[];
 }
 
 export interface BattleTeamState {
@@ -33,6 +43,8 @@ export interface BattleTeamState {
   hand: TacticCard[];
   discard: TacticCard[];
   teamMasteryUsed: boolean;
+  arcUsed: boolean;
+  freeSubstitutionUsed: boolean;
 }
 
 export interface BattleEvent {
@@ -97,6 +109,7 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     roundDamageReduction: 0,
     masteryUsed: false,
     defeated: false,
+    statuses: [] as StatusEffect[],
   }));
   const deck = deterministicShuffle(expandDeck(herd.build.deck), seed);
   return {
@@ -108,7 +121,42 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     hand: deck.slice(0, 5),
     discard: [],
     teamMasteryUsed: false,
+    arcUsed: false,
+    freeSubstitutionUsed: false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Skin bonds — the herd's shared skin decides its battlefield twist
+// ---------------------------------------------------------------------------
+
+const CHILL_STACKS_TO_FREEZE = 2;
+const VENOM_DAMAGE = 4;
+const VENOM_ROUNDS = 2;
+const ARC_DAMAGE = 5;
+const TIDE_HEAL = 3;
+
+const SKIN_EFFECTS = new Set(["apres", "toxic", "elektra", "coral", "aqua", "volcanic"]);
+
+export function teamSkin(team: BattleTeamState): string {
+  const bond = team.herd.bond;
+  return bond.kind === "skin" ? bond.value.trim().toLowerCase() : "";
+}
+
+function hasDefaultBond(team: BattleTeamState): boolean {
+  return !SKIN_EFFECTS.has(teamSkin(team));
+}
+
+export function substitutionCost(team: BattleTeamState): number {
+  return hasDefaultBond(team) && !team.freeSubstitutionUsed ? 0 : 1;
+}
+
+function findStatus(member: BattleMemberState, kind: StatusKind): StatusEffect | undefined {
+  return member.statuses.find((status) => status.kind === kind);
+}
+
+function removeStatus(member: BattleMemberState, kind: StatusKind): void {
+  member.statuses = member.statuses.filter((status) => status.kind !== kind);
 }
 
 export function activeMembers(team: BattleTeamState): BattleMemberState[] {
@@ -157,6 +205,14 @@ export function resolveRound(
   }
 
   if (!state.winner) {
+    tickStatuses(state, "player");
+    tickStatuses(state, "opponent");
+    replaceDefeated(state, "player");
+    replaceDefeated(state, "opponent");
+    updateWinner(state);
+  }
+
+  if (!state.winner) {
     finishRound(state, "player");
     finishRound(state, "opponent");
     replaceDefeated(state, "player");
@@ -181,6 +237,12 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
   const actor = team.members.find((member) => member.member.id === action.actorId);
   if (!actor || actor.defeated || actor.slot === "reserve") return;
 
+  if (findStatus(actor, "frozen")) {
+    removeStatus(actor, "frozen");
+    state.events.push(event(state, `${actor.member.name} is frozen solid and cannot act!`, action.teamId, actor.member.id));
+    return;
+  }
+
   if (action.type === "guard") {
     actor.guarding = true;
     state.events.push(event(state, `${actor.member.name} braces behind its Guard.`, action.teamId, actor.member.id));
@@ -189,11 +251,14 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
 
   if (action.type === "substitute") {
     const reserve = team.members.find((member) => member.member.id === action.reserveId && member.slot === "reserve" && !member.defeated);
-    if (!reserve || team.clay < 1) return;
-    team.clay -= 1;
+    const cost = substitutionCost(team);
+    if (!reserve || team.clay < cost) return;
+    team.clay -= cost;
+    if (cost === 0) team.freeSubstitutionUsed = true;
     const slot = actor.slot;
     actor.slot = "reserve";
     reserve.slot = slot;
+    if (teamSkin(team) === "aqua") reserve.roundDamageReduction += 0.1;
     state.events.push(event(state, `${reserve.member.name} substitutes for ${actor.member.name}.`, action.teamId, actor.member.id, reserve.member.id));
     return;
   }
@@ -227,8 +292,9 @@ function resolveMastery(state: BattleState, action: PlannedAction, actor: Battle
 
   if (className === "Mender") {
     const target = team.members.find((member) => member.member.id === action.targetId && !member.defeated) ?? actor;
-    const bonus = team.herd.bond.value.toLowerCase() === "coral" ? 6 : 0;
-    const amount = Math.min(24 + bonus, target.maxHP - target.currentHP);
+    const bonus = teamSkin(team) === "coral" ? 6 : 0;
+    const healPenalty = teamSkin(team) === "toxic" ? 0.8 : 1;
+    const amount = Math.min(Math.floor((24 + bonus) * healPenalty), target.maxHP - target.currentHP);
     target.currentHP += amount;
     state.events.push(event(state, `${actor.member.name} uses Second Wind on ${target.member.name} for ${amount} health.`, action.teamId, actor.member.id, target.member.id, amount));
     return;
@@ -256,7 +322,8 @@ function resolveMastery(state: BattleState, action: PlannedAction, actor: Battle
   const target = enemy.members.find((member) => member.member.id === action.targetId && !member.defeated && member.slot !== "reserve")
     ?? activeMembers(enemy)[0];
   if (!target) return;
-  const multiplier = className === "Warrior" ? 1.35 : className === "Soarer" ? 1.2 : 1.15;
+  const base = className === "Warrior" ? 1.35 : className === "Soarer" ? 1.2 : 1.15;
+  const multiplier = teamSkin(team) === "coral" ? base * 0.9 : base;
   dealStrike(state, action.teamId, actor, target, multiplier, true);
 }
 
@@ -268,11 +335,21 @@ function dealStrike(
   multiplier: number,
   mastery = false
 ): void {
+  const attackers = state[teamId];
+  const defenders = state[otherTeam(teamId)];
+  const attackerSkin = teamSkin(attackers);
+  const defenderSkin = teamSkin(defenders);
+
   let raw = strikeDamage(actor.member) * multiplier;
-  if (actor.currentHP < actor.maxHP / 2 && state[teamId].herd.bond.value.toLowerCase() === "volcanic") raw *= 1.1;
+  if (actor.currentHP < actor.maxHP / 2 && attackerSkin === "volcanic") raw *= 1.1;
+  if (attackerSkin === "apres") raw *= 0.95;
+  if (attackerSkin === "aqua" && state.round === 1) raw *= 0.9;
+
   const passive = Math.min(target.member.stats.guard * 0.03, 0.3);
-  const guarded = target.guarding ? 0.25 : 0;
-  const damage = Math.max(1, Math.round(raw * (1 - Math.min(0.75, passive + guarded + target.roundDamageReduction))));
+  const guarded = target.guarding ? (defenderSkin === "elektra" ? 0.2 : 0.25) : 0;
+  const exposedVanguard = defenderSkin === "volcanic" && state.round === 1 && target.slot === "vanguard" ? 0.05 : 0;
+  const reduction = Math.max(0, Math.min(0.75, passive + guarded + target.roundDamageReduction - exposedVanguard));
+  const damage = Math.max(1, Math.round(raw * (1 - reduction)));
   target.currentHP = Math.max(0, target.currentHP - damage);
   if (target.currentHP === 0) target.defeated = true;
   state.events.push(event(
@@ -283,6 +360,73 @@ function dealStrike(
     target.member.id,
     damage
   ));
+
+  if (!target.defeated) {
+    if (attackerSkin === "apres") applyChill(state, teamId, target);
+    if (attackerSkin === "toxic") applyVenom(state, teamId, target);
+  }
+  if (attackerSkin === "elektra" && !attackers.arcUsed) {
+    const arcTarget = activeMembers(defenders)
+      .filter((member) => member.member.id !== target.member.id)
+      .sort((a, b) => a.currentHP - b.currentHP)[0];
+    if (arcTarget) {
+      attackers.arcUsed = true;
+      arcTarget.currentHP = Math.max(0, arcTarget.currentHP - ARC_DAMAGE);
+      if (arcTarget.currentHP === 0) arcTarget.defeated = true;
+      state.events.push(event(
+        state,
+        `Lightning arcs from ${actor.member.name}'s strike into ${arcTarget.member.name} for ${ARC_DAMAGE}${arcTarget.defeated ? " — knocked out!" : "."}`,
+        teamId,
+        actor.member.id,
+        arcTarget.member.id,
+        ARC_DAMAGE
+      ));
+    }
+  }
+}
+
+function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberState): void {
+  if (findStatus(target, "frozen")) return;
+  const chill = findStatus(target, "chill");
+  if (chill && (chill.stacks ?? 1) + 1 >= CHILL_STACKS_TO_FREEZE) {
+    removeStatus(target, "chill");
+    target.statuses.push({ kind: "frozen", rounds: 2 });
+    state.events.push(event(state, `${target.member.name} is frozen solid!`, teamId, undefined, target.member.id));
+    return;
+  }
+  if (chill) {
+    chill.stacks = (chill.stacks ?? 1) + 1;
+    chill.rounds = 2;
+  } else {
+    target.statuses.push({ kind: "chill", rounds: 2, stacks: 1 });
+  }
+  state.events.push(event(state, `${target.member.name} is chilled to the bone.`, teamId, undefined, target.member.id));
+}
+
+function applyVenom(state: BattleState, teamId: TeamId, target: BattleMemberState): void {
+  const venom = findStatus(target, "venom");
+  if (venom) {
+    venom.rounds = VENOM_ROUNDS;
+    return;
+  }
+  target.statuses.push({ kind: "venom", rounds: VENOM_ROUNDS, magnitude: VENOM_DAMAGE });
+  state.events.push(event(state, `${target.member.name} is envenomed.`, teamId, undefined, target.member.id));
+}
+
+function tickStatuses(state: BattleState, teamId: TeamId): void {
+  const team = state[teamId];
+  for (const member of team.members) {
+    if (member.defeated) continue;
+    const venom = findStatus(member, "venom");
+    if (venom) {
+      const damage = venom.magnitude ?? VENOM_DAMAGE;
+      member.currentHP = Math.max(0, member.currentHP - damage);
+      state.events.push(event(state, `Venom sears ${member.member.name} for ${damage}${member.currentHP === 0 ? " — knocked out!" : "."}`, teamId, undefined, member.member.id, damage));
+      if (member.currentHP === 0) member.defeated = true;
+    }
+    for (const status of member.statuses) status.rounds -= 1;
+    member.statuses = member.statuses.filter((status) => status.rounds > 0);
+  }
 }
 
 export function isActionLegal(state: BattleState, action: PlannedAction): boolean {
@@ -293,7 +437,7 @@ export function isActionLegal(state: BattleState, action: PlannedAction): boolea
     return legalStrikeTargets(state, action).some((target) => target.member.id === action.targetId);
   }
   if (action.type === "substitute") {
-    return team.clay >= 1 && reserveMembers(team).some((member) => member.member.id === action.reserveId);
+    return team.clay >= substitutionCost(team) && reserveMembers(team).some((member) => member.member.id === action.reserveId);
   }
   if (action.type === "mastery") {
     return actor.member.classState.source === "on-chain" && !actor.masteryUsed && team.clay >= 2;
@@ -331,6 +475,17 @@ function finishRound(state: BattleState, teamId: TeamId): void {
   const team = state[teamId];
   team.maxClay = Math.min(8, team.maxClay + 1);
   team.clay = team.maxClay;
+  if (teamSkin(team) === "coral") {
+    let restored = 0;
+    for (const member of activeMembers(team)) {
+      const healed = Math.min(TIDE_HEAL, member.maxHP - member.currentHP);
+      member.currentHP += healed;
+      restored += healed;
+    }
+    if (restored > 0) {
+      state.events.push(event(state, `The tide restores ${team.herd.name} for ${restored}.`, teamId, undefined, undefined, restored));
+    }
+  }
   const drawn = team.deck.shift();
   if (drawn) {
     if (team.hand.length < 8) team.hand.push(drawn);
@@ -346,6 +501,7 @@ function finishRound(state: BattleState, teamId: TeamId): void {
 }
 
 function resetRound(team: BattleTeamState): void {
+  team.arcUsed = false;
   for (const member of team.members) {
     member.guarding = false;
     member.roundDamageReduction = 0;
@@ -354,8 +510,14 @@ function resetRound(team: BattleTeamState): void {
 
 function actionPriority(state: BattleState, action: PlannedAction): number {
   if (action.type === "team-mastery") return 100;
-  const member = state[action.teamId].members.find((candidate) => candidate.member.id === action.actorId);
-  const speed = member?.member.stats.speed ?? 0;
+  const team = state[action.teamId];
+  const member = team.members.find((candidate) => candidate.member.id === action.actorId);
+  let speed = member?.member.stats.speed ?? 0;
+  if (member) {
+    const chill = findStatus(member, "chill");
+    if (chill) speed -= 2 * (chill.stacks ?? 1);
+    if (hasDefaultBond(team) && state.round === 1 && member.slot === "vanguard") speed -= 1;
+  }
   return speed + (action.type === "guard" ? 20 : 0);
 }
 

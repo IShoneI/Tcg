@@ -186,8 +186,27 @@ function FighterCard({ state }: { state: BattleMemberState }) {
       <div className="flex items-center gap-3"><SpeciesToken member={state.member} large /><div><h3 className="font-bold">{state.member.species}</h3><p className="text-xs text-slate-500">{state.member.classState.className} · {state.member.classState.source === "on-chain" ? "Mastered" : "Provisional"}</p></div></div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full bg-emerald-400 transition-all" style={{ width: `${percentage}%` }} /></div>
       <div className="mt-1 flex justify-between text-xs text-slate-400"><span>{state.currentHP}/{state.maxHP} HP</span><span>P{state.member.stats.power} G{state.member.stats.guard} S{state.member.stats.speed}</span></div>
+      {state.statuses.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {state.statuses.map((status) => (
+            <span key={status.kind} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusStyle(status.kind)}`}>{statusLabel(status)}</span>
+          ))}
+        </div>
+      )}
     </article>
   );
+}
+
+function statusLabel(status: BattleMemberState["statuses"][number]): string {
+  if (status.kind === "chill") return `❄ Chill ×${status.stacks ?? 1}`;
+  if (status.kind === "frozen") return "🧊 Frozen";
+  return `☠ Venom ${status.magnitude ?? 4}/round`;
+}
+
+function statusStyle(kind: BattleMemberState["statuses"][number]["kind"]): string {
+  if (kind === "chill") return "bg-sky-400/15 text-sky-300";
+  if (kind === "frozen") return "bg-sky-200/20 text-sky-100";
+  return "bg-lime-400/15 text-lime-300";
 }
 
 function ActionPanel({ state, member, plan, onPlan }: { state: BattleState; member: BattleMemberState; plan?: PlannedAction; onPlan: (plan: PlannedAction) => void }) {
@@ -238,6 +257,6 @@ function labelPlan(plan: PlannedAction, state: BattleState): string {
 }
 
 function colourFor(value: string): string {
-  const colours: Record<string, string> = { coral: "#fb7185", toxic: "#84cc16", aqua: "#38bdf8", volcanic: "#f97316", crystalline: "#a78bfa" };
+  const colours: Record<string, string> = { coral: "#fb7185", toxic: "#84cc16", aqua: "#38bdf8", volcanic: "#f97316", crystalline: "#a78bfa", apres: "#bfdbfe", elektra: "#818cf8" };
   return colours[value.toLowerCase()] ?? "#64748b";
 }

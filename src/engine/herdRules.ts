@@ -221,25 +221,33 @@ export function buildHerdBond(members: HerdMember[], preferred: "skin" | "colour
 
 function bondFor(kind: "skin" | "colour", value: string): HerdBond {
   const normalised = value.toLowerCase();
-  const examples: Record<string, Pick<HerdBond, "benefit" | "limitation">> = {
+  const skinEffects: Record<string, Pick<HerdBond, "benefit" | "limitation">> = {
+    apres: {
+      benefit: "Strikes Chill the target. A second Chill freezes it solid, cancelling its next action.",
+      limitation: "Cold-stiffened muscles: strike damage is reduced by 5%.",
+    },
     toxic: {
-      benefit: "Damage-over-time effects last one additional round.",
+      benefit: "Strikes envenom the target: 4 guard-ignoring damage at the end of each round for 2 rounds.",
       limitation: "Direct healing received is reduced by 20%.",
     },
+    elektra: {
+      benefit: "The first strike each round arcs 5 lightning damage into a second enemy.",
+      limitation: "Guarding grants 20% mitigation instead of 25%.",
+    },
     coral: {
-      benefit: "The first heal each round restores 6 additional health.",
-      limitation: "Critical and mastery damage is reduced by 10%.",
+      benefit: "The tide restores 3 health to active dinos each round, and the first heal restores 6 extra.",
+      limitation: "Mastery strike damage is reduced by 10%.",
     },
     aqua: {
-      benefit: "Repositioning grants 10% damage reduction for the round.",
+      benefit: "A substituted-in dino gains 10% damage reduction for the round.",
       limitation: "Opening-round strikes deal 10% less damage.",
     },
     volcanic: {
       benefit: "Dinos below half health deal 10% more strike damage.",
-      limitation: "The Vanguard begins with 5% less mitigation.",
+      limitation: "The Vanguard begins round one with 5% less mitigation.",
     },
   };
-  const rule = examples[normalised] ?? {
+  const rule = (kind === "skin" ? skinEffects[normalised] : undefined) ?? {
     benefit: "The first substitution each match costs 0 Clay.",
     limitation: "The starting Vanguard has -1 Speed in round one.",
   };
