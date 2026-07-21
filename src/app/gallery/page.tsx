@@ -5,7 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useGameStore } from "@/store/gameStore";
+import { COLLECTIONS, useGameStore } from "@/store/gameStore";
 import CardDisplay from "@/components/CardDisplay";
 import CardDetail from "@/components/CardDetail";
 import type { NFTCard } from "@/types/card";
@@ -72,6 +72,7 @@ export default function GalleryPage() {
     loadCards,
     loadHoldTimes,
     activeCollection,
+    setActiveCollection,
     lastFetchedAt,
   } = useGameStore();
 
@@ -146,6 +147,15 @@ export default function GalleryPage() {
     }
   };
 
+  const handleCollectionChange = (slug: string) => {
+    const collection = COLLECTIONS.find((item) => item.slug === slug);
+    if (!collection || collection.slug === activeCollection.slug) return;
+    setClassFilter("All");
+    setSearchQuery("");
+    setSelectedCard(null);
+    setActiveCollection(collection);
+  };
+
   // --- Keep selected card in sync with store (hold times patch) ---
   useEffect(() => {
     if (selectedCard) {
@@ -201,6 +211,31 @@ export default function GalleryPage() {
       </header>
 
       <div className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+        <section className="mb-6" aria-label="Claynosaurz ecosystem collections">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {COLLECTIONS.map((collection) => {
+              const selected = collection.slug === activeCollection.slug;
+              return (
+                <button
+                  key={collection.slug}
+                  type="button"
+                  onClick={() => handleCollectionChange(collection.slug)}
+                  aria-pressed={selected}
+                  disabled={isLoadingCards || isLoadingHoldTimes}
+                  className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-50 ${
+                    selected
+                      ? "border-clay-400/50 bg-clay-500/20 text-clay-200"
+                      : "border-white/10 bg-white/5 text-gray-500 hover:border-white/20 hover:text-gray-300"
+                  }`}
+                >
+                  {collection.name}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-xs text-gray-600">{activeCollection.description}</p>
+        </section>
+
         {/* ================================================================= */}
         {/* Loading state                                                     */}
         {/* ================================================================= */}
