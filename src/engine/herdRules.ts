@@ -210,44 +210,73 @@ export function isVeteranLineup(members: HerdMember[]): boolean {
   return members.length > 0 && members.every((member) => member.classState.source === "on-chain");
 }
 
+/**
+ * A herd's display identity: its dominant skin or colour. Mixed herds are
+ * legal — companion tiers scale each trait group's skill independently — so
+ * this never throws; it just names the largest group.
+ */
 export function buildHerdBond(members: HerdMember[], preferred: "skin" | "colour" = "skin"): HerdBond {
   const values = preferred === "skin" ? members.map((member) => member.skin) : members.map((member) => member.colour);
-  const first = values[0]?.trim();
-  if (!first || values.some((value) => value.trim().toLowerCase() !== first.toLowerCase())) {
-    throw new Error(`Every herd member must share the same ${preferred}`);
+  const counts = new Map<string, { value: string; count: number }>();
+  for (const raw of values) {
+    const value = raw?.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    const existing = counts.get(key);
+    if (existing) existing.count += 1;
+    else counts.set(key, { value, count: 1 });
   }
-  return bondFor(preferred, first);
+  let dominant: { value: string; count: number } | undefined;
+  for (const entry of counts.values()) {
+    if (!dominant || entry.count > dominant.count) dominant = entry;
+  }
+  return bondFor(preferred, dominant?.value ?? "Mixed");
 }
 
 function bondFor(kind: "skin" | "colour", value: string): HerdBond {
   const normalised = value.toLowerCase();
+  const scaling = "Strength scales with standing matching companions (Solo, Pack, Pride, Full Herd).";
   const skinEffects: Record<string, Pick<HerdBond, "benefit" | "limitation">> = {
     apres: {
-      benefit: "Strikes Chill the target. A second Chill freezes it solid, cancelling its next action.",
-      limitation: "Cold-stiffened muscles: strike damage is reduced by 5%.",
+      benefit: "Strikes Chill the target; a second Chill freezes it solid, cancelling its next action. Pride drains Clay on freeze; a Full Herd triggers an avalanche.",
+      limitation: "Cold-stiffened muscles: Apres strike damage is reduced by 5%.",
     },
     toxic: {
-      benefit: "Strikes envenom the target: 4 guard-ignoring damage at the end of each round for 2 rounds.",
-      limitation: "Direct healing received is reduced by 20%.",
+      benefit: "Strikes envenom the target for guard-ignoring damage at the end of each round. Pride weakens healing on venomed targets.",
+      limitation: "Toxic dinos receive 20% less direct healing.",
     },
     elektra: {
-      benefit: "The first strike each round arcs 5 lightning damage into a second enemy.",
-      limitation: "Guarding grants 20% mitigation instead of 25%.",
+      benefit: "The first strike each round arcs lightning into extra enemies. A Full Herd's overload drains enemy Clay.",
+      limitation: "Elektra dinos gain 20% from Guarding instead of 25%.",
     },
     coral: {
-      benefit: "The tide restores 3 health to active dinos each round, and the first heal restores 6 extra.",
-      limitation: "Mastery strike damage is reduced by 10%.",
+      benefit: "The tide restores active dinos each round; Pride also cleanses afflictions, and a Full Herd surges a spring tide.",
+      limitation: "Coral mastery strike damage is reduced by 10%.",
     },
+    oceania: { benefit: "Undertow (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    cristalline: { benefit: "Facet reflection (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    savanna: { benefit: "Pack Hunt focus-fire (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    jurassic: { benefit: "Primal Roar intimidation (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    amazonia: { benefit: "Overgrowth entanglement (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    mirage: { benefit: "Heat Haze evasion (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+  };
+  const colorEffects: Record<string, Pick<HerdBond, "benefit" | "limitation">> = {
+    mist: { benefit: "Phantom: Mist dinos act with +1 Speed priority.", limitation: scaling },
+    charcoal: { benefit: "Cinder hide: flat damage reduction on every strike received.", limitation: scaling },
+    amethyst: { benefit: "Focus: masteries cost less Clay at Pride; a Full Herd raises the Clay cap.", limitation: scaling },
+    spring: { benefit: "Renewal: active dinos regenerate at the end of each round.", limitation: scaling },
     aqua: {
-      benefit: "A substituted-in dino gains 10% damage reduction for the round.",
+      benefit: "Flow: Guarding mitigates more; a Full Herd's substitutions grant 10% damage reduction.",
       limitation: "Opening-round strikes deal 10% less damage.",
     },
+    tropic: { benefit: "Sunburst: extra Clay in the opening rounds; a Full Herd starts with an extra card.", limitation: scaling },
+    desert: { benefit: "Endurance: shrugs off fatigue; a Full Herd speeds up after round 8.", limitation: scaling },
     volcanic: {
-      benefit: "Dinos below half health deal 10% more strike damage.",
+      benefit: "Fury: dinos below half health strike harder; a Full Herd survives one lethal blow.",
       limitation: "The Vanguard begins round one with 5% less mitigation.",
     },
   };
-  const rule = (kind === "skin" ? skinEffects[normalised] : undefined) ?? {
+  const rule = (kind === "skin" ? skinEffects[normalised] : colorEffects[normalised]) ?? {
     benefit: "The first substitution each match costs 0 Clay.",
     limitation: "The starting Vanguard has -1 Speed in round one.",
   };
@@ -305,11 +334,6 @@ export function validateHerd(herd: PublishedHerd): string[] {
   }
   if (herd.isVeteranHerd && !herd.build.deck.some((card) => card.id === TEAM_MASTERY_CARD.id)) {
     errors.push("A Veteran Herd requires Call of the Veterans.");
-  }
-  try {
-    buildHerdBond(herd.members, herd.bond.kind);
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : "Invalid Herd Bond.");
   }
   return errors;
 }

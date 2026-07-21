@@ -32,7 +32,11 @@ Both collections share the same Skin and Color trait space.
 | Amazonia | 1,358 | 279 | Rainforest |
 | Mirage | 2,083 | 383 | Desert illusion |
 
-### Colors (9) — ordered rarest → most common
+### Colors (8) — ordered rarest → most common
+
+There are exactly eight clay skin colours. (Marketplace facets list "Salmon"
+for Call of Saga, but that is a **background** colour trait, not a clay
+colour — background traits are ignored by the game entirely.)
 
 | Color | Genesis | Saga | Note |
 | --- | ---: | ---: | --- |
@@ -40,7 +44,6 @@ Both collections share the same Skin and Color trait space.
 | Charcoal | 484 | 105 | |
 | Amethyst | 889 | 143 | |
 | Spring | 977 | 219 | |
-| Salmon | — | 339 | **Call of Saga exclusive** |
 | Aqua | 1,703 | 336 | Currently misfiled as a skin in the engine |
 | Tropic | 1,710 | 345 | |
 | Desert | 1,877 | 376 | |
@@ -48,7 +51,11 @@ Both collections share the same Skin and Color trait space.
 
 Design consequence: rarity ranks the skill power ceiling. The requested ranking
 (Apres > Toxic > Elektra > Coral) is exactly Genesis rarity order — the rule
-generalises to all ten skins.
+generalises to all ten skins, **and to species**: rarer species (Saga Para/Spino
+at 998 each, Raptor at 1,251, Bronto at 1,400) carry a higher ceiling than
+common ones (Rex at 2,135). Rare traits are harder and more expensive to
+collect, so their ceiling is allowed to *grow over time* through the
+progression layer (§9) — new apex riders ship to the rarest traits first.
 
 ## 2. Design principles
 
@@ -65,7 +72,13 @@ generalises to all ten skins.
 
 ## 3. Companion tiers
 
-Count members sharing the trait value across the whole herd (active + reserve):
+**Tiers are dynamic: only standing (non-defeated) members count.** Knocking out
+two dinos of a six-Apres herd drops it from Full Herd to Pride mid-battle, so
+focus-firing the right species first is a real strategic lever — you can break
+an apex before it breaks you.
+
+Count standing members sharing the trait value across the whole herd (active +
+reserve):
 
 | Tier | Matching members (Core Six) | Skill strength |
 | --- | --- | --- |
@@ -103,7 +116,7 @@ verbs. Mirage/Amazonia (common) get defensive value that is excellent at Pack
 tier but has a lower apex ceiling. Common skins are easy to stack (2,083
 Mirages exist) so their per-tier numbers stay modest.
 
-## 5. The nine Color Boosts
+## 5. The eight Color Boosts
 
 Colors are passive, economy- and stat-adjacent — they never deny actions.
 Boost strength uses the same tiers (Solo / Pack / Pride / Full Herd).
@@ -114,16 +127,10 @@ Boost strength uses the same tiers (Solo / Pack / Pride / Full Herd).
 | **Charcoal** | Cinder hide: flat damage reduction | 0 → 2 → 3 → 4 flat off every strike received |
 | **Amethyst** | Focus: mastery economy | — → masteries cost −0 → masteries −1 Clay → +1 max Clay cap |
 | **Spring** | Renewal: regeneration | 0 → heal 1/round → 2/round → 3/round on actives |
-| **Salmon** | Shoal: swap agility | — → substitutions −0 → free substitution 1/match → all substitutions free |
 | **Aqua** | Flow: guard efficiency | — → guard 27% → guard 30% → substituted-in dinos gain 10% DR (current aqua effect) |
 | **Tropic** | Sunburst: early tempo | — → +1 Clay round 1 → +1 Clay rounds 1–2 → start with an extra card in hand |
-| **Desert** | Endurance: late game | — → immune to fatigue 1 round → fatigue −50% → +2 speed after round 8 |
+| **Desert** | Endurance: late game | — → first fatigue negated → fatigue −50% → +2 speed after round 8 |
 | **Volcanic** | Fury: wounded damage | — → +5% dmg below half HP → +10% (current volcanic effect) → +10% and survive one lethal hit at 1 HP (once/match) |
-
-Salmon exists only on Para and Spino: a full-herd Salmon build is impossible in
-Core Six and capped at 2 members (Pack) even in Complete Nine — its apex tier
-is aspirational-only unless future collections add Salmon. That scarcity is
-acceptable: Saga dinos carry a unique color identity.
 
 ## 6. The herd-building game tree
 
@@ -171,8 +178,9 @@ sacrifices Avalanche but holds freeze pressure *and* out-heals Toxic.
   that gets scarier as it bleeds.
 - **The Wall (6 Cristalline, 4 Charcoal / 2 Aqua)** — reflect turtle; the
   round cap and Toxic are its natural enemies.
-- **Saga Skirmishers (Complete Nine with Para/Spino Salmon pair)** — the only
-  route to Shoal swaps; mobility identity unavailable to Genesis-only herds.
+- **Saga Skirmishers (Complete Nine with a Para/Spino pair)** — the only route
+  to the nine-strong formats; Saga species are the rarest bodies in the game
+  (998 each) and sit at the top of the species-ceiling curve.
 
 ## 7. Engine changes (implementation plan)
 
@@ -203,18 +211,54 @@ Suggested build order: 1 → 2 (with old effects mapped into the new framework a
 current numbers) → 5 Workshop meters → 3 new skills in rarity order (Apres
 apex first, Mirage last) → 4/6 continuously → 7.
 
-## 8. Open questions
+## 8. Decisions (resolved)
 
-1. Should reserves count toward tier (current proposal: yes, whole herd) or
-   only actives (tier could drop mid-battle as dinos fall — more dynamic,
-   more punishing)?
-2. Apex color for Salmon is unreachable — accept as lore, or grant Saga pairs
-   a special "Twin Shoal" rider at Pack tier?
-3. Do Ancients (1/1s) deserve a unique skill line? (22 exist across both
-   collections.)
-4. Class–skill interaction: current design keeps skills class-agnostic (the
-   carrier rule only decides *who* procs). A future layer could let e.g. a
-   Soarer carrier arc Elektra to reserves — deferred to keep alpha-2 bounded.
+1. **Tiers are dynamic** — standing members only. Defeats strip tiers, so
+   target priority ("break the apex") is core strategy. (Decided 2026-07-21.)
+2. **Salmon is a background colour trait and is ignored.** The game reads
+   exactly eight clay colours. Background, Mood and Motion traits never affect
+   battle.
+3. **Ancients get a unique battle role** — see §10.
+4. Class–skill interaction stays class-agnostic in alpha-2 (the carrier rule
+   only decides *who* procs). A future layer may add class-flavoured skill
+   expressions.
+
+## 9. Progression: the growing ceiling
+
+Rarity should pay off more as the game matures, without breaking the equal
+stat budget. The mechanism is **Collector Level** (earned from battles played,
+won, and herds published — not from spending):
+
+- Tiers Solo→Full are available to everyone from level 1; the *numbers* above
+  are the permanent baseline.
+- New **apex riders** ship in seasons, gated by Collector Level milestones and
+  released in rarity order — Apres and the Saga species get their new riders
+  first, Mirage and Rex last. Rare traits therefore appreciate in gameplay
+  ceiling over time, mirroring how they appreciate as collectibles.
+- Levels never buy stats. They unlock *access* (riders, formats, Ancient
+  content below), keeping the fairness model intact.
+
+## 10. Ancients (the 22 one-of-ones)
+
+Ancients are too singular to be ordinary herd members. Three roles, phased:
+
+1. **Boss battles (first, PvE)** — each Ancient is a scripted raid boss that
+   unlocks at Collector Level milestones. It fights *alone against a full
+   herd* with a boosted solo statline (the one sanctioned budget exception,
+   PvE-only), its own signature skill line, and multi-phase behaviour.
+   Beating an Ancient grants level XP and a cosmetic badge on your published
+   herds. This makes Ancients content everyone can experience.
+2. **Relic patronage (holders)** — the wallet that owns an Ancient may attach
+   it to a published herd as a non-combatant **Patron**: it does not battle,
+   but grants the herd one extra apex rider slot or a once-per-match signature
+   intervention. Requires a Collector Level floor so it is earned, not
+   default-on.
+3. **Champion mode (later, opt-in queue)** — Ancient vs Ancient or
+   Ancient-vs-herd exhibition battles in a separate ladder, so PvP herd
+   balance is never distorted.
+
+Ownership is revalidated the same way Mastered classes are (on-chain check at
+publish + periodic revalidation).
 
 ## Sources
 

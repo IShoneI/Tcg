@@ -173,11 +173,12 @@ describe("validateHerd", () => {
 });
 
 describe("herd bonds", () => {
-  it("requires every member to share the bonded trait", () => {
+  it("names the dominant trait and accepts mixed herds", () => {
     const members = makeCoreSix(0);
     expect(buildHerdBond(members, "skin").value).toBe("Coral");
     members[2] = { ...members[2], skin: "Toxic" };
-    expect(() => buildHerdBond(members, "skin")).toThrow();
+    expect(buildHerdBond(members, "skin").value).toBe("Coral");
+    expect(buildHerdBond(members, "colour").value).toBe("Red");
   });
 });
 

@@ -6,12 +6,15 @@ import {
   activeMembers,
   createBattle,
   legalStrikeTargets,
+  masteryCost,
   reserveMembers,
   resolveRound,
+  teamCompositionOf,
   type BattleMemberState,
   type BattleState,
   type PlannedAction,
 } from "@/engine/battleEngine";
+import { activeGroups } from "@/engine/herdComposition";
 import { planAIActions, type AIDifficulty } from "@/engine/aiOpponent";
 import { FORMAT_LABELS } from "@/engine/herdRules";
 import { SAMPLE_HERDS } from "@/data/sampleHerds";
@@ -158,10 +161,25 @@ function Selector({ title, herds, selected, onSelect }: { title: string; herds: 
 }
 
 function TeamBoard({ team, enemy = false }: { team: BattleState["player"]; enemy?: boolean }) {
+  const groups = activeGroups(teamCompositionOf(team));
   return (
     <section className={`rounded-2xl border p-4 ${enemy ? "border-rose-500/20 bg-rose-500/[0.04]" : "border-sky-400/20 bg-sky-400/[0.04]"}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div><h2 className="font-black">{team.herd.name}</h2><p className="text-xs text-slate-500">{team.herd.bond.name} · {team.clay}/{team.maxClay} Clay</p></div>
+        <div>
+          <h2 className="font-black">{team.herd.name}</h2>
+          <p className="text-xs text-slate-500">{team.clay}/{team.maxClay} Clay</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {groups.length === 0 ? (
+              <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-slate-400">Unbonded herd</span>
+            ) : (
+              groups.map((group) => (
+                <span key={`${group.kind}-${group.value}`} className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${group.tier === "full" ? "bg-amber-300/20 text-amber-300" : group.tier === "pride" ? "bg-violet-400/15 text-violet-300" : "bg-white/5 text-slate-300"}`}>
+                  {group.value} ×{group.count} · {group.tier === "full" ? "Full Herd" : group.tier}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
         <div className="text-xs text-slate-400">{team.members.filter((member) => !member.defeated).length}/{team.members.length} standing</div>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -212,6 +230,7 @@ function statusStyle(kind: BattleMemberState["statuses"][number]["kind"]): strin
 function ActionPanel({ state, member, plan, onPlan }: { state: BattleState; member: BattleMemberState; plan?: PlannedAction; onPlan: (plan: PlannedAction) => void }) {
   const targets = legalStrikeTargets(state, { teamId: "player", actorId: member.member.id });
   const reserves = reserveMembers(state.player);
+  const cost = masteryCost(state.player);
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
       <p className="font-bold">{member.member.species}</p>
@@ -219,8 +238,8 @@ function ActionPanel({ state, member, plan, onPlan }: { state: BattleState; memb
       <div className="grid grid-cols-2 gap-2 text-xs">
         {targets.map((target) => <button key={target.member.id} onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "strike", targetId: target.member.id })} className="rounded-lg border border-white/10 px-2 py-2 hover:bg-white/5">Strike {target.member.species}</button>)}
         <button onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "guard" })} className="rounded-lg border border-white/10 px-2 py-2 hover:bg-white/5">Guard</button>
-        {member.member.classState.source === "on-chain" && !member.masteryUsed && state.player.clay >= 2 && (
-          <button onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "mastery", targetId: masteryTarget(state, member) })} className="rounded-lg border border-amber-300/30 px-2 py-2 text-amber-300 hover:bg-amber-300/10">Mastery · 2</button>
+        {member.member.classState.source === "on-chain" && !member.masteryUsed && state.player.clay >= cost && (
+          <button onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "mastery", targetId: masteryTarget(state, member) })} className="rounded-lg border border-amber-300/30 px-2 py-2 text-amber-300 hover:bg-amber-300/10">Mastery · {cost}</button>
         )}
         {reserves.slice(0, 2).map((reserve) => <button key={reserve.member.id} onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "substitute", reserveId: reserve.member.id })} className="rounded-lg border border-white/10 px-2 py-2 hover:bg-white/5">Swap: {reserve.member.species}</button>)}
         {state.player.herd.isVeteranHerd && !state.player.teamMasteryUsed && state.player.clay >= 4 && (

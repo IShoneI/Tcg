@@ -38,10 +38,11 @@ function createSample(
   classes: ClassName[],
   masteredCount: number,
   accent: string,
-  playStyle: string
+  playStyle: string,
+  skins?: string[]
 ): PublishedHerd {
   const members = CORE_SPECIES.map((species, index) =>
-    member(id, species, index, skin, colour, classes[index], index < masteredCount)
+    member(id, species, index, skins?.[index] ?? skin, colour, classes[index], index < masteredCount)
   );
   const veteran = isVeteranLineup(members);
   return {
@@ -93,7 +94,7 @@ export const SAMPLE_HERDS: PublishedHerd[] = [
     "Après Avalanche",
     "Community Showcase",
     "Apres",
-    "White",
+    "Mist",
     ["Stalker", "Defender", "Mystic", "Warrior", "Mender", "Tracker"],
     3,
     "#bfdbfe",
@@ -104,10 +105,22 @@ export const SAMPLE_HERDS: PublishedHerd[] = [
     "Elektra Surge",
     "Community Showcase",
     "Elektra",
-    "Blue",
+    "Charcoal",
     ["Warrior", "Stalker", "Mystic", "Stalker", "Tracker", "Mender"],
     2,
     "#818cf8",
     "Arc lightning into the back line with every opening strike"
+  ),
+  createSample(
+    "frost-and-tide",
+    "Frost & Tide",
+    "Community Showcase",
+    "Apres",
+    "Spring",
+    ["Stalker", "Defender", "Mender", "Warrior", "Tracker", "Mender"],
+    4,
+    "#6ee7b7",
+    "A mixed pack: Apres freeze pressure backed by Coral tides",
+    ["Apres", "Apres", "Apres", "Coral", "Coral", "Coral"]
   ),
 ];

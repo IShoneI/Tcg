@@ -14,6 +14,7 @@ import {
   SPECIES_STATS,
   validateHerd,
 } from "@/engine/herdRules";
+import { activeGroups, composeHerd } from "@/engine/herdComposition";
 import { savePublishedHerd } from "@/services/herdStorage";
 import type { NFTCard } from "@/types/card";
 import type { HerdMember, PublishedHerd, Species } from "@/types/herd";
@@ -148,6 +149,21 @@ export default function HerdWorkshopPage() {
 
             <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
               <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold">Publish this Core Six</h2><p className="text-sm text-slate-500">{previewMembers.filter((member) => member.classState.source === "on-chain").length}/{CORE.length} permanently classed · {previewMembers.length}/{CORE.length} species selected</p></div><button onClick={publish} className="rounded-xl bg-amber-300 px-6 py-3 font-black text-slate-950">Publish locally</button></div>
+              {previewMembers.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Companion groups</p>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {activeGroups(composeHerd(previewMembers, CORE.length)).map((group) => (
+                      <span key={`${group.kind}-${group.value}`} className={`rounded-full px-2 py-1 text-xs font-bold ${group.tier === "full" ? "bg-amber-300/20 text-amber-300" : "bg-white/5 text-slate-300"}`}>
+                        {group.value} ×{group.count} · {group.tier === "full" ? "Full Herd" : group.tier}
+                      </span>
+                    ))}
+                    {activeGroups(composeHerd(previewMembers, CORE.length)).length === 0 && (
+                      <span className="rounded-full bg-white/5 px-2 py-1 text-xs text-slate-400">No Pack-tier groups yet — matching skins or colours unlock Skills and Boosts</span>
+                    )}
+                  </div>
+                </div>
+              )}
               {message && <p className={`mt-4 rounded-lg p-3 text-sm ${message.ok ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300"}`}>{message.text}</p>}
               <p className="mt-4 text-xs text-slate-600">Prototype publishing is stored only in this browser. Server profiles, wallet signatures and periodic ownership revalidation are the next production layer.</p>
             </section>

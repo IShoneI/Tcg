@@ -1,4 +1,4 @@
-import { activeMembers, legalStrikeTargets, reserveMembers } from "@/engine/battleEngine";
+import { activeMembers, legalStrikeTargets, masteryCost, reserveMembers } from "@/engine/battleEngine";
 import type { BattleState, PlannedAction, TeamId } from "@/engine/battleEngine";
 
 export type AIDifficulty = "easy" | "medium" | "hard";
@@ -16,7 +16,7 @@ export function planAIActions(
     if (
       actor.member.classState.source === "on-chain" &&
       !actor.masteryUsed &&
-      team.clay >= 2 &&
+      team.clay >= masteryCost(team) &&
       (difficulty === "hard" || actor.currentHP < actor.maxHP * 0.65)
     ) {
       actions.push({ teamId, actorId: actor.member.id, type: "mastery", targetId: masteryTarget });

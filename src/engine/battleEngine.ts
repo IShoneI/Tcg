@@ -1,3 +1,13 @@
+import { normaliseColor, normaliseSkin, type ColorName, type SkinName } from "@/data/traitCatalog";
+import {
+  colorTier,
+  composeHerd,
+  skinTier,
+  tierAtLeast,
+  tierForCount,
+  type CompanionTier,
+  type HerdComposition,
+} from "@/engine/herdComposition";
 import { FORMAT_ROUND_CAP } from "@/engine/herdRules";
 import type { FormationSlot, HerdMember, PublishedHerd, TacticCard } from "@/types/herd";
 
@@ -44,7 +54,12 @@ export interface BattleTeamState {
   discard: TacticCard[];
   teamMasteryUsed: boolean;
   arcUsed: boolean;
+  chillUsed: boolean;
   freeSubstitutionUsed: boolean;
+  avalancheUsed: boolean;
+  springTideUsed: boolean;
+  fatigueShieldUsed: boolean;
+  lethalGuardUsed: boolean;
 }
 
 export interface BattleEvent {
@@ -112,43 +127,81 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     statuses: [] as StatusEffect[],
   }));
   const deck = deterministicShuffle(expandDeck(herd.build.deck), seed);
+  const composition = composeHerd(herd.members, herd.members.length);
+  const tropic = colorTier(composition, "Tropic");
+  const handSize = tierAtLeast(tropic, "full") ? 6 : 5;
+  const openingClay = 3 + (tierAtLeast(tropic, "pack") ? 1 : 0);
   return {
     herd,
     members,
-    clay: 3,
+    clay: openingClay,
     maxClay: 3,
-    deck: deck.slice(5),
-    hand: deck.slice(0, 5),
+    deck: deck.slice(handSize),
+    hand: deck.slice(0, handSize),
     discard: [],
     teamMasteryUsed: false,
     arcUsed: false,
+    chillUsed: false,
     freeSubstitutionUsed: false,
+    avalancheUsed: false,
+    springTideUsed: false,
+    fatigueShieldUsed: false,
+    lethalGuardUsed: false,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Skin bonds — the herd's shared skin decides its battlefield twist
+// Skin Skills & Color Boosts — per-member effects that scale with how many
+// STANDING companions share the trait (dynamic companion tiers).
 // ---------------------------------------------------------------------------
 
 const CHILL_STACKS_TO_FREEZE = 2;
-const VENOM_DAMAGE = 4;
-const VENOM_ROUNDS = 2;
-const ARC_DAMAGE = 5;
-const TIDE_HEAL = 3;
 
-const SKIN_EFFECTS = new Set(["apres", "toxic", "elektra", "coral", "aqua", "volcanic"]);
-
-export function teamSkin(team: BattleTeamState): string {
-  const bond = team.herd.bond;
-  return bond.kind === "skin" ? bond.value.trim().toLowerCase() : "";
+export function teamCompositionOf(team: BattleTeamState): HerdComposition {
+  return composeHerd(
+    team.members.filter((member) => !member.defeated).map((member) => member.member),
+    team.herd.members.length
+  );
 }
 
+function memberSkin(member: BattleMemberState): SkinName | null {
+  return normaliseSkin(member.member.skin);
+}
+
+function memberColor(member: BattleMemberState): ColorName | null {
+  return normaliseColor(member.member.colour);
+}
+
+function memberSkinTier(team: BattleTeamState, member: BattleMemberState): CompanionTier {
+  return skinTier(teamCompositionOf(team), memberSkin(member));
+}
+
+function memberColorTier(team: BattleTeamState, member: BattleMemberState): CompanionTier {
+  return colorTier(teamCompositionOf(team), memberColor(member));
+}
+
+function teamSkinTier(team: BattleTeamState, skin: SkinName): CompanionTier {
+  return skinTier(teamCompositionOf(team), skin);
+}
+
+function teamColorTier(team: BattleTeamState, color: ColorName): CompanionTier {
+  return colorTier(teamCompositionOf(team), color);
+}
+
+/** A herd with no skin group at Pack tier runs the default bond instead. */
 function hasDefaultBond(team: BattleTeamState): boolean {
-  return !SKIN_EFFECTS.has(teamSkin(team));
+  const composition = teamCompositionOf(team);
+  return !Object.values(composition.skinCounts).some(
+    (count) => tierAtLeast(tierForCount(count, composition.formatSize), "pack")
+  );
 }
 
 export function substitutionCost(team: BattleTeamState): number {
   return hasDefaultBond(team) && !team.freeSubstitutionUsed ? 0 : 1;
+}
+
+export function masteryCost(team: BattleTeamState): number {
+  return tierAtLeast(teamColorTier(team, "Amethyst"), "pride") ? 1 : 2;
 }
 
 function findStatus(member: BattleMemberState, kind: StatusKind): StatusEffect | undefined {
@@ -258,7 +311,9 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
     const slot = actor.slot;
     actor.slot = "reserve";
     reserve.slot = slot;
-    if (teamSkin(team) === "aqua") reserve.roundDamageReduction += 0.1;
+    if (memberColor(reserve) === "Aqua" && tierAtLeast(memberColorTier(team, reserve), "full")) {
+      reserve.roundDamageReduction += 0.1;
+    }
     state.events.push(event(state, `${reserve.member.name} substitutes for ${actor.member.name}.`, action.teamId, actor.member.id, reserve.member.id));
     return;
   }
@@ -285,15 +340,18 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
 function resolveMastery(state: BattleState, action: PlannedAction, actor: BattleMemberState): void {
   const team = state[action.teamId];
   const enemy = state[otherTeam(action.teamId)];
-  if (actor.masteryUsed || actor.member.classState.source !== "on-chain" || team.clay < 2) return;
-  team.clay -= 2;
+  const cost = masteryCost(team);
+  if (actor.masteryUsed || actor.member.classState.source !== "on-chain" || team.clay < cost) return;
+  team.clay -= cost;
   actor.masteryUsed = true;
   const className = actor.member.classState.className;
 
   if (className === "Mender") {
     const target = team.members.find((member) => member.member.id === action.targetId && !member.defeated) ?? actor;
-    const bonus = teamSkin(team) === "coral" ? 6 : 0;
-    const healPenalty = teamSkin(team) === "toxic" ? 0.8 : 1;
+    const bonus = tierAtLeast(teamSkinTier(team, "Coral"), "pack") ? 6 : 0;
+    let healPenalty = 1;
+    if (memberSkin(target) === "Toxic" && tierAtLeast(memberSkinTier(team, target), "pack")) healPenalty *= 0.8;
+    if (findStatus(target, "venom") && tierAtLeast(teamSkinTier(enemy, "Toxic"), "pride")) healPenalty *= 0.8;
     const amount = Math.min(Math.floor((24 + bonus) * healPenalty), target.maxHP - target.currentHP);
     target.currentHP += amount;
     state.events.push(event(state, `${actor.member.name} uses Second Wind on ${target.member.name} for ${amount} health.`, action.teamId, actor.member.id, target.member.id, amount));
@@ -323,7 +381,8 @@ function resolveMastery(state: BattleState, action: PlannedAction, actor: Battle
     ?? activeMembers(enemy)[0];
   if (!target) return;
   const base = className === "Warrior" ? 1.35 : className === "Soarer" ? 1.2 : 1.15;
-  const multiplier = teamSkin(team) === "coral" ? base * 0.9 : base;
+  const coralCarrier = memberSkin(actor) === "Coral" && tierAtLeast(memberSkinTier(team, actor), "pack");
+  const multiplier = coralCarrier ? base * 0.9 : base;
   dealStrike(state, action.teamId, actor, target, multiplier, true);
 }
 
@@ -337,20 +396,44 @@ function dealStrike(
 ): void {
   const attackers = state[teamId];
   const defenders = state[otherTeam(teamId)];
-  const attackerSkin = teamSkin(attackers);
-  const defenderSkin = teamSkin(defenders);
+  const attackerComp = teamCompositionOf(attackers);
+  const defenderComp = teamCompositionOf(defenders);
+  const aSkin = memberSkin(actor);
+  const aSkinTier = skinTier(attackerComp, aSkin);
+  const aColor = memberColor(actor);
+  const aColorTier = colorTier(attackerComp, aColor);
+  const tSkinTier = skinTier(defenderComp, memberSkin(target));
+  const tColorTier = colorTier(defenderComp, memberColor(target));
+  const tColor = memberColor(target);
 
   let raw = strikeDamage(actor.member) * multiplier;
-  if (actor.currentHP < actor.maxHP / 2 && attackerSkin === "volcanic") raw *= 1.1;
-  if (attackerSkin === "apres") raw *= 0.95;
-  if (attackerSkin === "aqua" && state.round === 1) raw *= 0.9;
+  if (actor.currentHP < actor.maxHP / 2 && aColor === "Volcanic" && tierAtLeast(aColorTier, "pack")) {
+    raw *= tierAtLeast(aColorTier, "pride") ? 1.1 : 1.05;
+  }
+  if (aSkin === "Apres" && tierAtLeast(aSkinTier, "pack")) raw *= 0.95;
+  if (aColor === "Aqua" && tierAtLeast(aColorTier, "pack") && state.round === 1) raw *= 0.9;
 
   const passive = Math.min(target.member.stats.guard * 0.03, 0.3);
-  const guarded = target.guarding ? (defenderSkin === "elektra" ? 0.2 : 0.25) : 0;
-  const exposedVanguard = defenderSkin === "volcanic" && state.round === 1 && target.slot === "vanguard" ? 0.05 : 0;
+  let guardRate = 0.25;
+  if (tColor === "Aqua" && tierAtLeast(tColorTier, "pack")) guardRate = tierAtLeast(tColorTier, "pride") ? 0.3 : 0.27;
+  if (memberSkin(target) === "Elektra" && tierAtLeast(tSkinTier, "pack")) guardRate -= 0.05;
+  const guarded = target.guarding ? guardRate : 0;
+  const exposedVanguard =
+    tColor === "Volcanic" && tierAtLeast(tColorTier, "pack") && state.round === 1 && target.slot === "vanguard" ? 0.05 : 0;
   const reduction = Math.max(0, Math.min(0.75, passive + guarded + target.roundDamageReduction - exposedVanguard));
-  const damage = Math.max(1, Math.round(raw * (1 - reduction)));
-  target.currentHP = Math.max(0, target.currentHP - damage);
+  let damage = Math.max(1, Math.round(raw * (1 - reduction)));
+  if (tColor === "Charcoal" && tierAtLeast(tColorTier, "pack")) {
+    const hide = tierAtLeast(tColorTier, "full") ? 4 : tierAtLeast(tColorTier, "pride") ? 3 : 2;
+    damage = Math.max(1, damage - hide);
+  }
+
+  if (damage >= target.currentHP && tColor === "Volcanic" && tierAtLeast(tColorTier, "full") && !defenders.lethalGuardUsed) {
+    defenders.lethalGuardUsed = true;
+    target.currentHP = 1;
+    state.events.push(event(state, `${target.member.name} burns with fury and refuses to fall!`, otherTeam(teamId), undefined, target.member.id));
+  } else {
+    target.currentHP = Math.max(0, target.currentHP - damage);
+  }
   if (target.currentHP === 0) target.defeated = true;
   state.events.push(event(
     state,
@@ -362,36 +445,67 @@ function dealStrike(
   ));
 
   if (!target.defeated) {
-    if (attackerSkin === "apres") applyChill(state, teamId, target);
-    if (attackerSkin === "toxic") applyVenom(state, teamId, target);
+    if (aSkin === "Apres" && (tierAtLeast(aSkinTier, "pack") || !attackers.chillUsed)) {
+      attackers.chillUsed = true;
+      applyChill(state, teamId, target, aSkinTier);
+    }
+    if (aSkin === "Toxic") applyVenom(state, teamId, target, aSkinTier);
   }
-  if (attackerSkin === "elektra" && !attackers.arcUsed) {
-    const arcTarget = activeMembers(defenders)
+  if (aSkin === "Elektra" && !attackers.arcUsed) {
+    const arcDamage = tierAtLeast(aSkinTier, "pack") ? 5 : 3;
+    const extraTargets = tierAtLeast(aSkinTier, "pride") ? 2 : 1;
+    const arcTargets = activeMembers(defenders)
       .filter((member) => member.member.id !== target.member.id)
-      .sort((a, b) => a.currentHP - b.currentHP)[0];
-    if (arcTarget) {
+      .sort((a, b) => a.currentHP - b.currentHP)
+      .slice(0, extraTargets);
+    if (arcTargets.length > 0) {
       attackers.arcUsed = true;
-      arcTarget.currentHP = Math.max(0, arcTarget.currentHP - ARC_DAMAGE);
-      if (arcTarget.currentHP === 0) arcTarget.defeated = true;
-      state.events.push(event(
-        state,
-        `Lightning arcs from ${actor.member.name}'s strike into ${arcTarget.member.name} for ${ARC_DAMAGE}${arcTarget.defeated ? " — knocked out!" : "."}`,
-        teamId,
-        actor.member.id,
-        arcTarget.member.id,
-        ARC_DAMAGE
-      ));
+      for (const arcTarget of arcTargets) {
+        arcTarget.currentHP = Math.max(0, arcTarget.currentHP - arcDamage);
+        if (arcTarget.currentHP === 0) arcTarget.defeated = true;
+        state.events.push(event(
+          state,
+          `Lightning arcs from ${actor.member.name}'s strike into ${arcTarget.member.name} for ${arcDamage}${arcTarget.defeated ? " — knocked out!" : "."}`,
+          teamId,
+          actor.member.id,
+          arcTarget.member.id,
+          arcDamage
+        ));
+      }
+      if (tierAtLeast(aSkinTier, "full") && defenders.clay > 0) {
+        defenders.clay -= 1;
+        state.events.push(event(state, `The overload drains 1 Clay from ${defenders.herd.name}.`, teamId, actor.member.id));
+      }
     }
   }
 }
 
-function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberState): void {
+function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberState, tier: CompanionTier): void {
   if (findStatus(target, "frozen")) return;
+  const attackers = state[teamId];
+  const defenders = state[otherTeam(teamId)];
   const chill = findStatus(target, "chill");
   if (chill && (chill.stacks ?? 1) + 1 >= CHILL_STACKS_TO_FREEZE) {
     removeStatus(target, "chill");
     target.statuses.push({ kind: "frozen", rounds: 2 });
     state.events.push(event(state, `${target.member.name} is frozen solid!`, teamId, undefined, target.member.id));
+    if (tierAtLeast(tier, "pride") && defenders.clay > 0) {
+      defenders.clay -= 1;
+      state.events.push(event(state, `The deep freeze drains 1 Clay from ${defenders.herd.name}.`, teamId));
+    }
+    if (tierAtLeast(tier, "full") && !attackers.avalancheUsed) {
+      attackers.avalancheUsed = true;
+      for (const bystander of activeMembers(defenders)) {
+        if (bystander.member.id === target.member.id || findStatus(bystander, "frozen")) continue;
+        const existing = findStatus(bystander, "chill");
+        if (existing) {
+          existing.rounds = 2;
+        } else {
+          bystander.statuses.push({ kind: "chill", rounds: 2, stacks: 1 });
+        }
+      }
+      state.events.push(event(state, `An avalanche rolls over ${defenders.herd.name} — the whole line is chilled!`, teamId));
+    }
     return;
   }
   if (chill) {
@@ -403,13 +517,16 @@ function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberStat
   state.events.push(event(state, `${target.member.name} is chilled to the bone.`, teamId, undefined, target.member.id));
 }
 
-function applyVenom(state: BattleState, teamId: TeamId, target: BattleMemberState): void {
+function applyVenom(state: BattleState, teamId: TeamId, target: BattleMemberState, tier: CompanionTier): void {
+  const magnitude = tierAtLeast(tier, "pack") ? 4 : 2;
+  const rounds = tierAtLeast(tier, "pack") ? 2 : 1;
   const venom = findStatus(target, "venom");
   if (venom) {
-    venom.rounds = VENOM_ROUNDS;
+    venom.rounds = Math.max(venom.rounds, rounds);
+    venom.magnitude = Math.max(venom.magnitude ?? 0, magnitude);
     return;
   }
-  target.statuses.push({ kind: "venom", rounds: VENOM_ROUNDS, magnitude: VENOM_DAMAGE });
+  target.statuses.push({ kind: "venom", rounds, magnitude });
   state.events.push(event(state, `${target.member.name} is envenomed.`, teamId, undefined, target.member.id));
 }
 
@@ -419,7 +536,7 @@ function tickStatuses(state: BattleState, teamId: TeamId): void {
     if (member.defeated) continue;
     const venom = findStatus(member, "venom");
     if (venom) {
-      const damage = venom.magnitude ?? VENOM_DAMAGE;
+      const damage = venom.magnitude ?? 4;
       member.currentHP = Math.max(0, member.currentHP - damage);
       state.events.push(event(state, `Venom sears ${member.member.name} for ${damage}${member.currentHP === 0 ? " — knocked out!" : "."}`, teamId, undefined, member.member.id, damage));
       if (member.currentHP === 0) member.defeated = true;
@@ -440,7 +557,7 @@ export function isActionLegal(state: BattleState, action: PlannedAction): boolea
     return team.clay >= substitutionCost(team) && reserveMembers(team).some((member) => member.member.id === action.reserveId);
   }
   if (action.type === "mastery") {
-    return actor.member.classState.source === "on-chain" && !actor.masteryUsed && team.clay >= 2;
+    return actor.member.classState.source === "on-chain" && !actor.masteryUsed && team.clay >= masteryCost(team);
   }
   if (action.type === "team-mastery") {
     return team.herd.isVeteranHerd && !team.teamMasteryUsed && team.clay >= 4;
@@ -473,19 +590,60 @@ function updateWinner(state: BattleState): void {
 
 function finishRound(state: BattleState, teamId: TeamId): void {
   const team = state[teamId];
-  team.maxClay = Math.min(8, team.maxClay + 1);
+  const clayCap = tierAtLeast(teamColorTier(team, "Amethyst"), "full") ? 9 : 8;
+  team.maxClay = Math.min(clayCap, team.maxClay + 1);
   team.clay = team.maxClay;
-  if (teamSkin(team) === "coral") {
+  if (tierAtLeast(teamColorTier(team, "Tropic"), "pride") && state.round === 1) {
+    team.clay += 1;
+    state.events.push(event(state, `The sunburst grants ${team.herd.name} 1 extra Clay.`, teamId, undefined, undefined, 1));
+  }
+
+  const coral = teamSkinTier(team, "Coral");
+  if (tierAtLeast(coral, "solo")) {
+    const tide = tierAtLeast(coral, "pride") ? 4 : tierAtLeast(coral, "pack") ? 3 : 2;
     let restored = 0;
     for (const member of activeMembers(team)) {
-      const healed = Math.min(TIDE_HEAL, member.maxHP - member.currentHP);
+      const healed = Math.min(tide, member.maxHP - member.currentHP);
       member.currentHP += healed;
       restored += healed;
     }
     if (restored > 0) {
       state.events.push(event(state, `The tide restores ${team.herd.name} for ${restored}.`, teamId, undefined, undefined, restored));
     }
+    if (tierAtLeast(coral, "pride")) {
+      const afflicted = activeMembers(team).find((member) => member.statuses.length > 0);
+      if (afflicted) {
+        const venom = findStatus(afflicted, "venom");
+        const chill = findStatus(afflicted, "chill");
+        if (venom) removeStatus(afflicted, "venom");
+        else if (chill && (chill.stacks ?? 1) > 1) chill.stacks = (chill.stacks ?? 1) - 1;
+        else if (chill) removeStatus(afflicted, "chill");
+        state.events.push(event(state, `The tide washes an affliction from ${afflicted.member.name}.`, teamId, undefined, afflicted.member.id));
+      }
+    }
+    if (tierAtLeast(coral, "full") && !team.springTideUsed && team.members.some((member) => !member.defeated && findStatus(member, "frozen"))) {
+      team.springTideUsed = true;
+      for (const member of team.members) {
+        if (!member.defeated) member.statuses = [];
+      }
+      state.events.push(event(state, `A spring tide surges through ${team.herd.name}, cleansing every affliction!`, teamId));
+    }
   }
+
+  const spring = teamColorTier(team, "Spring");
+  if (tierAtLeast(spring, "pack")) {
+    const renewal = tierAtLeast(spring, "full") ? 3 : tierAtLeast(spring, "pride") ? 2 : 1;
+    let restored = 0;
+    for (const member of activeMembers(team)) {
+      const healed = Math.min(renewal, member.maxHP - member.currentHP);
+      member.currentHP += healed;
+      restored += healed;
+    }
+    if (restored > 0) {
+      state.events.push(event(state, `Spring renewal restores ${team.herd.name} for ${restored}.`, teamId, undefined, undefined, restored));
+    }
+  }
+
   const drawn = team.deck.shift();
   if (drawn) {
     if (team.hand.length < 8) team.hand.push(drawn);
@@ -493,15 +651,23 @@ function finishRound(state: BattleState, teamId: TeamId): void {
   } else {
     const target = activeMembers(team).sort((a, b) => a.currentHP - b.currentHP)[0];
     if (target) {
-      target.currentHP = Math.max(0, target.currentHP - 5);
+      const desert = teamColorTier(team, "Desert");
+      if (tierAtLeast(desert, "pack") && !team.fatigueShieldUsed) {
+        team.fatigueShieldUsed = true;
+        state.events.push(event(state, `${team.herd.name}'s desert endurance shrugs off the fatigue.`, teamId));
+        return;
+      }
+      const fatigue = tierAtLeast(desert, "pride") ? 3 : 5;
+      target.currentHP = Math.max(0, target.currentHP - fatigue);
       if (target.currentHP === 0) target.defeated = true;
-      state.events.push(event(state, `${target.member.name} suffers 5 fatigue damage.`, teamId, target.member.id, undefined, 5));
+      state.events.push(event(state, `${target.member.name} suffers ${fatigue} fatigue damage.`, teamId, target.member.id, undefined, fatigue));
     }
   }
 }
 
 function resetRound(team: BattleTeamState): void {
   team.arcUsed = false;
+  team.chillUsed = false;
   for (const member of team.members) {
     member.guarding = false;
     member.roundDamageReduction = 0;
@@ -511,11 +677,15 @@ function resetRound(team: BattleTeamState): void {
 function actionPriority(state: BattleState, action: PlannedAction): number {
   if (action.type === "team-mastery") return 100;
   const team = state[action.teamId];
+  const enemy = state[otherTeam(action.teamId)];
   const member = team.members.find((candidate) => candidate.member.id === action.actorId);
   let speed = member?.member.stats.speed ?? 0;
   if (member) {
     const chill = findStatus(member, "chill");
     if (chill) speed -= 2 * (chill.stacks ?? 1);
+    if (findStatus(member, "venom") && tierAtLeast(teamSkinTier(enemy, "Toxic"), "full")) speed -= 1;
+    if (memberColor(member) === "Mist" && tierAtLeast(memberColorTier(team, member), "pack")) speed += 1;
+    if (tierAtLeast(teamColorTier(team, "Desert"), "full") && state.round > 8) speed += 2;
     if (hasDefaultBond(team) && state.round === 1 && member.slot === "vanguard") speed -= 1;
   }
   return speed + (action.type === "guard" ? 20 : 0);
