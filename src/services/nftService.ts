@@ -18,7 +18,7 @@ export async function fetchNFTsByOwner(
   limit: number = 1000
 ): Promise<DASResponse> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
   try {
     const response = await fetch("/api/inventory", {
@@ -35,7 +35,7 @@ export async function fetchNFTsByOwner(
     return result as DASResponse;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Helius did not respond within 20 seconds");
+      throw new Error("Helius did not respond within 60 seconds");
     }
     throw error;
   } finally {

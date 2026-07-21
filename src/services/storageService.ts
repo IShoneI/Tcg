@@ -1,6 +1,7 @@
 import type { DASAsset, PlayerProfile } from "@/types/card";
 
 const STORAGE_PREFIX = "nft-tcg";
+const INVENTORY_CACHE_VERSION = "v2";
 
 interface InventoryCache {
   data: DASAsset[];
@@ -16,7 +17,7 @@ export function saveInventoryCache(
   walletAddress: string,
   assets: DASAsset[]
 ): void {
-  const key = `${STORAGE_PREFIX}:inventory:${walletAddress}`;
+  const key = inventoryCacheKey(walletAddress);
   const value: InventoryCache = { data: assets, cachedAt: Date.now() };
 
   try {
@@ -29,7 +30,7 @@ export function saveInventoryCache(
 }
 
 export function loadInventoryCache(walletAddress: string): DASAsset[] | null {
-  const key = `${STORAGE_PREFIX}:inventory:${walletAddress}`;
+  const key = inventoryCacheKey(walletAddress);
   const raw = localStorage.getItem(key);
   if (!raw) return null;
 
@@ -43,7 +44,12 @@ export function loadInventoryCache(walletAddress: string): DASAsset[] | null {
 }
 
 export function clearInventoryCache(walletAddress: string): void {
+  localStorage.removeItem(inventoryCacheKey(walletAddress));
   localStorage.removeItem(`${STORAGE_PREFIX}:inventory:${walletAddress}`);
+}
+
+function inventoryCacheKey(walletAddress: string): string {
+  return `${STORAGE_PREFIX}:inventory:${INVENTORY_CACHE_VERSION}:${walletAddress}`;
 }
 
 export function saveProfile(profile: PlayerProfile): void {

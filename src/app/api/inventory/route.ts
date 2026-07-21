@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { DASAsset, DASResponse } from "@/types/card";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const DEFAULT_DEMO_WALLET = "BmFUGjWXwM1qbXfm8RDaqYDVkb6aDJmHbpXAvhRQav9Z";
 const DEMO_WALLET_ADDRESS =
@@ -14,6 +15,7 @@ async function fetchWalletInventory(walletAddress: string): Promise<DASAsset[]> 
 
   const endpoint = `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
   const assets: DASAsset[] = [];
+  const seenAssetIds = new Set<string>();
   const limit = 1000;
   let page = 1;
 
@@ -48,8 +50,18 @@ async function fetchWalletInventory(walletAddress: string): Promise<DASAsset[]> 
     }
 
     const result = payload.result as DASResponse;
-    assets.push(...result.items);
-    if (assets.length >= result.total || result.items.length < limit) break;
+    let newAssetCount = 0;
+    for (const asset of result.items) {
+      if (seenAssetIds.has(asset.id)) continue;
+      seenAssetIds.add(asset.id);
+      assets.push(asset);
+      newAssetCount += 1;
+    }
+
+    // Some large wallets receive a capped `total` value of 1000 from DAS.
+    // A full page can therefore still have a following page. Stop only when
+    // the page is short or when DAS repeats a page without any new assets.
+    if (result.items.length < limit || newAssetCount === 0) break;
     page += 1;
   }
 
@@ -58,7 +70,7 @@ async function fetchWalletInventory(walletAddress: string): Promise<DASAsset[]> 
 
 const getCachedWalletInventory = unstable_cache(
   fetchWalletInventory,
-  ["dinowarz-demo-wallet-inventory-v1"],
+  ["dinowarz-demo-wallet-inventory-v2"],
   { revalidate: 86_400 }
 );
 
