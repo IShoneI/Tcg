@@ -23,7 +23,7 @@ export interface PlannedAction {
   reserveId?: string;
 }
 
-export type StatusKind = "chill" | "frozen" | "venom";
+export type StatusKind = "chill" | "frozen" | "venom" | "undertow" | "roar" | "entangle";
 
 export interface StatusEffect {
   kind: StatusKind;
@@ -60,6 +60,14 @@ export interface BattleTeamState {
   springTideUsed: boolean;
   fatigueShieldUsed: boolean;
   lethalGuardUsed: boolean;
+  struckThisRound: Record<string, number>;
+  reflectsUsed: number;
+  undertowUsed: boolean;
+  riptideUsed: boolean;
+  stampedeUsed: boolean;
+  hazeRoundUsed: number;
+  hazeMatchUsed: boolean;
+  statusFizzleUsed: boolean;
 }
 
 export interface BattleEvent {
@@ -147,6 +155,14 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     springTideUsed: false,
     fatigueShieldUsed: false,
     lethalGuardUsed: false,
+    struckThisRound: {},
+    reflectsUsed: 0,
+    undertowUsed: false,
+    riptideUsed: false,
+    stampedeUsed: false,
+    hazeRoundUsed: 0,
+    hazeMatchUsed: false,
+    statusFizzleUsed: false,
   };
 }
 
@@ -196,8 +212,10 @@ function hasDefaultBond(team: BattleTeamState): boolean {
   );
 }
 
-export function substitutionCost(team: BattleTeamState): number {
-  return hasDefaultBond(team) && !team.freeSubstitutionUsed ? 0 : 1;
+export function substitutionCost(team: BattleTeamState, enemy?: BattleTeamState): number {
+  const base = hasDefaultBond(team) && !team.freeSubstitutionUsed ? 0 : 1;
+  const overgrowthTax = enemy && tierAtLeast(teamSkinTier(enemy, "Amazonia"), "solo") ? 1 : 0;
+  return base + overgrowthTax;
 }
 
 export function masteryCost(team: BattleTeamState): number {
@@ -241,6 +259,8 @@ export function resolveRound(
   const state = cloneState(previous);
   resetRound(state.player);
   resetRound(state.opponent);
+  applyAuras(state, "player");
+  applyAuras(state, "opponent");
 
   const actions = [...playerActions, ...opponentActions]
     .filter((action) => isActionLegal(state, action))
@@ -284,6 +304,44 @@ export function resolveRound(
   return state;
 }
 
+/** Round-start auras: Jurassic intimidation and Amazonia entanglement. */
+function applyAuras(state: BattleState, teamId: TeamId): void {
+  const team = state[teamId];
+  const enemy = state[otherTeam(teamId)];
+
+  const jurassic = teamSkinTier(team, "Jurassic");
+  if (tierAtLeast(jurassic, "solo")) {
+    const magnitude = tierAtLeast(jurassic, "pack") ? 2 : 1;
+    const targets = tierAtLeast(jurassic, "pride")
+      ? activeMembers(enemy)
+      : activeMembers(enemy).filter((member) => member.slot === "vanguard");
+    for (const target of targets) {
+      const roar = findStatus(target, "roar");
+      if (roar) {
+        roar.rounds = 2;
+        roar.magnitude = Math.max(roar.magnitude ?? 0, magnitude);
+      } else {
+        target.statuses.push({ kind: "roar", rounds: 2, magnitude });
+      }
+    }
+    if (state.round === 1 && targets.length > 0) {
+      state.events.push(event(state, `${team.herd.name}'s primal roar shakes the enemy line!`, teamId));
+    }
+  }
+
+  const amazonia = teamSkinTier(team, "Amazonia");
+  if (tierAtLeast(amazonia, "pride")) {
+    for (const target of activeMembers(enemy)) {
+      if (!findStatus(target, "entangle")) {
+        target.statuses.push({ kind: "entangle", rounds: 2, magnitude: 1 });
+      }
+    }
+    if (state.round === 1) {
+      state.events.push(event(state, `Creeping overgrowth entangles ${enemy.herd.name}.`, teamId));
+    }
+  }
+}
+
 function resolveAction(state: BattleState, action: PlannedAction): void {
   const team = state[action.teamId];
   const enemy = state[otherTeam(action.teamId)];
@@ -304,7 +362,7 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
 
   if (action.type === "substitute") {
     const reserve = team.members.find((member) => member.member.id === action.reserveId && member.slot === "reserve" && !member.defeated);
-    const cost = substitutionCost(team);
+    const cost = substitutionCost(team, enemy);
     if (!reserve || team.clay < cost) return;
     team.clay -= cost;
     if (cost === 0) team.freeSubstitutionUsed = true;
@@ -313,6 +371,10 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
     reserve.slot = slot;
     if (memberColor(reserve) === "Aqua" && tierAtLeast(memberColorTier(team, reserve), "full")) {
       reserve.roundDamageReduction += 0.1;
+    }
+    if (tierAtLeast(teamSkinTier(enemy, "Amazonia"), "pack") && !findStatus(reserve, "entangle")) {
+      reserve.statuses.push({ kind: "entangle", rounds: 2, magnitude: 2 });
+      state.events.push(event(state, `Vines snare ${reserve.member.name} as it enters the fray.`, action.teamId, undefined, reserve.member.id));
     }
     state.events.push(event(state, `${reserve.member.name} substitutes for ${actor.member.name}.`, action.teamId, actor.member.id, reserve.member.id));
     return;
@@ -412,8 +474,30 @@ function dealStrike(
   }
   if (aSkin === "Apres" && tierAtLeast(aSkinTier, "pack")) raw *= 0.95;
   if (aColor === "Aqua" && tierAtLeast(aColorTier, "pack") && state.round === 1) raw *= 0.9;
+  const roar = findStatus(actor, "roar");
+  if (roar) raw = Math.max(1, raw - 2 * (roar.magnitude ?? 1));
 
-  const passive = Math.min(target.member.stats.guard * 0.03, 0.3);
+  const mirageTier = teamSkinTier(defenders, "Mirage");
+  let hazed = false;
+  if (tierAtLeast(mirageTier, "pack")) {
+    const charges = tierAtLeast(mirageTier, "full") ? 2 : 1;
+    if (defenders.hazeRoundUsed < charges) {
+      defenders.hazeRoundUsed += 1;
+      hazed = true;
+    }
+  } else if (tierAtLeast(mirageTier, "solo") && !defenders.hazeMatchUsed) {
+    defenders.hazeMatchUsed = true;
+    hazed = true;
+  }
+  if (hazed) {
+    raw *= 0.75;
+    state.events.push(event(state, `${target.member.name} shimmers in the heat haze.`, otherTeam(teamId), undefined, target.member.id));
+  }
+
+  const priorStrikes = attackers.struckThisRound[target.member.id] ?? 0;
+  const packHunting = aSkin === "Savanna" && priorStrikes >= 1;
+  let passive = Math.min(target.member.stats.guard * 0.03, 0.3);
+  if (packHunting && tierAtLeast(aSkinTier, "pride")) passive *= 0.9;
   let guardRate = 0.25;
   if (tColor === "Aqua" && tierAtLeast(tColorTier, "pack")) guardRate = tierAtLeast(tColorTier, "pride") ? 0.3 : 0.27;
   if (memberSkin(target) === "Elektra" && tierAtLeast(tSkinTier, "pack")) guardRate -= 0.05;
@@ -422,6 +506,10 @@ function dealStrike(
     tColor === "Volcanic" && tierAtLeast(tColorTier, "pack") && state.round === 1 && target.slot === "vanguard" ? 0.05 : 0;
   const reduction = Math.max(0, Math.min(0.75, passive + guarded + target.roundDamageReduction - exposedVanguard));
   let damage = Math.max(1, Math.round(raw * (1 - reduction)));
+  if (packHunting) {
+    damage += tierAtLeast(aSkinTier, "pack") ? 4 : 2;
+    state.events.push(event(state, `${actor.member.name} joins the pack hunt on ${target.member.name}.`, teamId, actor.member.id, target.member.id));
+  }
   if (tColor === "Charcoal" && tierAtLeast(tColorTier, "pack")) {
     const hide = tierAtLeast(tColorTier, "full") ? 4 : tierAtLeast(tColorTier, "pride") ? 3 : 2;
     damage = Math.max(1, damage - hide);
@@ -443,6 +531,73 @@ function dealStrike(
     target.member.id,
     damage
   ));
+
+  attackers.struckThisRound[target.member.id] = priorStrikes + 1;
+
+  const cristallineTier = skinTier(defenderComp, memberSkin(target));
+  if (memberSkin(target) === "Cristalline" && tierAtLeast(cristallineTier, "solo")) {
+    const reflectLimit = tierAtLeast(cristallineTier, "pride") ? 2 : 1;
+    if (defenders.reflectsUsed < reflectLimit) {
+      defenders.reflectsUsed += 1;
+      const rate = tierAtLeast(cristallineTier, "pack") ? 0.15 : 0.1;
+      const reflected = Math.max(1, Math.round(damage * rate));
+      actor.currentHP = Math.max(0, actor.currentHP - reflected);
+      if (actor.currentHP === 0) actor.defeated = true;
+      state.events.push(event(state, `${target.member.name}'s facets reflect ${reflected} back at ${actor.member.name}${actor.defeated ? " — knocked out!" : "."}`, otherTeam(teamId), target.member.id, actor.member.id, reflected));
+      if (tierAtLeast(cristallineTier, "full")) {
+        const neighbour = activeMembers(attackers)
+          .filter((member) => member.member.id !== actor.member.id)
+          .sort((a, b) => a.currentHP - b.currentHP)[0];
+        if (neighbour) {
+          neighbour.currentHP = Math.max(0, neighbour.currentHP - 3);
+          if (neighbour.currentHP === 0) neighbour.defeated = true;
+          state.events.push(event(state, `Prism shards splinter into ${neighbour.member.name} for 3.`, otherTeam(teamId), target.member.id, neighbour.member.id, 3));
+        }
+      }
+    }
+  }
+
+  if (
+    aSkin === "Savanna" &&
+    tierAtLeast(aSkinTier, "full") &&
+    !attackers.stampedeUsed &&
+    priorStrikes >= 2 &&
+    !target.defeated &&
+    target.currentHP < target.maxHP * 0.25 &&
+    target.slot !== "reserve"
+  ) {
+    attackers.stampedeUsed = true;
+    const slot = target.slot;
+    const replacement = reserveMembers(defenders)[0];
+    target.slot = "reserve";
+    if (replacement) replacement.slot = slot;
+    state.events.push(event(state, `The stampede drives ${target.member.name} out of the battle line!`, teamId, actor.member.id, target.member.id));
+  }
+
+  if (aSkin === "Oceania" && tierAtLeast(aSkinTier, "pack") && !attackers.undertowUsed && !target.defeated) {
+    if (target.slot === "left-wing" || target.slot === "right-wing") {
+      const enemyVanguard = activeMembers(defenders).find((member) => member.slot === "vanguard");
+      if (enemyVanguard) {
+        attackers.undertowUsed = true;
+        const wingSlot = target.slot;
+        target.slot = "vanguard";
+        enemyVanguard.slot = wingSlot;
+        if (tierAtLeast(aSkinTier, "pride") && !findStatus(target, "undertow")) {
+          target.statuses.push({ kind: "undertow", rounds: 2, magnitude: 2 });
+        }
+        state.events.push(event(state, `The undertow drags ${target.member.name} into the vanguard!`, teamId, actor.member.id, target.member.id));
+      }
+    } else if (target.slot === "vanguard" && tierAtLeast(aSkinTier, "full") && !attackers.riptideUsed) {
+      const replacement = reserveMembers(defenders)[0];
+      if (replacement) {
+        attackers.undertowUsed = true;
+        attackers.riptideUsed = true;
+        target.slot = "reserve";
+        replacement.slot = "vanguard";
+        state.events.push(event(state, `A riptide sweeps ${target.member.name} out of the fight — ${replacement.member.name} is pulled in!`, teamId, actor.member.id, target.member.id));
+      }
+    }
+  }
 
   if (!target.defeated) {
     if (aSkin === "Apres" && (tierAtLeast(aSkinTier, "pack") || !attackers.chillUsed)) {
@@ -484,6 +639,7 @@ function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberStat
   if (findStatus(target, "frozen")) return;
   const attackers = state[teamId];
   const defenders = state[otherTeam(teamId)];
+  if (fizzleStatus(state, teamId, target)) return;
   const chill = findStatus(target, "chill");
   if (chill && (chill.stacks ?? 1) + 1 >= CHILL_STACKS_TO_FREEZE) {
     removeStatus(target, "chill");
@@ -517,7 +673,18 @@ function applyChill(state: BattleState, teamId: TeamId, target: BattleMemberStat
   state.events.push(event(state, `${target.member.name} is chilled to the bone.`, teamId, undefined, target.member.id));
 }
 
+/** Mirage Pride rider: the first status against the herd each match fizzles. */
+function fizzleStatus(state: BattleState, attackerId: TeamId, target: BattleMemberState): boolean {
+  const defenders = state[otherTeam(attackerId)];
+  if (defenders.statusFizzleUsed) return false;
+  if (!tierAtLeast(teamSkinTier(defenders, "Mirage"), "pride")) return false;
+  defenders.statusFizzleUsed = true;
+  state.events.push(event(state, `The affliction shimmers away from ${target.member.name}.`, otherTeam(attackerId), undefined, target.member.id));
+  return true;
+}
+
 function applyVenom(state: BattleState, teamId: TeamId, target: BattleMemberState, tier: CompanionTier): void {
+  if (fizzleStatus(state, teamId, target)) return;
   const magnitude = tierAtLeast(tier, "pack") ? 4 : 2;
   const rounds = tierAtLeast(tier, "pack") ? 2 : 1;
   const venom = findStatus(target, "venom");
@@ -554,9 +721,10 @@ export function isActionLegal(state: BattleState, action: PlannedAction): boolea
     return legalStrikeTargets(state, action).some((target) => target.member.id === action.targetId);
   }
   if (action.type === "substitute") {
-    return team.clay >= substitutionCost(team) && reserveMembers(team).some((member) => member.member.id === action.reserveId);
+    return team.clay >= substitutionCost(team, state[otherTeam(action.teamId)]) && reserveMembers(team).some((member) => member.member.id === action.reserveId);
   }
   if (action.type === "mastery") {
+    if (state.round === 1 && tierAtLeast(teamSkinTier(state[otherTeam(action.teamId)], "Jurassic"), "full")) return false;
     return actor.member.classState.source === "on-chain" && !actor.masteryUsed && team.clay >= masteryCost(team);
   }
   if (action.type === "team-mastery") {
@@ -630,6 +798,18 @@ function finishRound(state: BattleState, teamId: TeamId): void {
     }
   }
 
+  if (tierAtLeast(teamSkinTier(team, "Amazonia"), "full")) {
+    let restored = 0;
+    for (const member of reserveMembers(team)) {
+      const healed = Math.min(2, member.maxHP - member.currentHP);
+      member.currentHP += healed;
+      restored += healed;
+    }
+    if (restored > 0) {
+      state.events.push(event(state, `The canopy shelters ${team.herd.name}'s reserves for ${restored}.`, teamId, undefined, undefined, restored));
+    }
+  }
+
   const spring = teamColorTier(team, "Spring");
   if (tierAtLeast(spring, "pack")) {
     const renewal = tierAtLeast(spring, "full") ? 3 : tierAtLeast(spring, "pride") ? 2 : 1;
@@ -668,6 +848,10 @@ function finishRound(state: BattleState, teamId: TeamId): void {
 function resetRound(team: BattleTeamState): void {
   team.arcUsed = false;
   team.chillUsed = false;
+  team.undertowUsed = false;
+  team.reflectsUsed = 0;
+  team.hazeRoundUsed = 0;
+  team.struckThisRound = {};
   for (const member of team.members) {
     member.guarding = false;
     member.roundDamageReduction = 0;
@@ -683,6 +867,10 @@ function actionPriority(state: BattleState, action: PlannedAction): number {
   if (member) {
     const chill = findStatus(member, "chill");
     if (chill) speed -= 2 * (chill.stacks ?? 1);
+    const undertow = findStatus(member, "undertow");
+    if (undertow) speed -= undertow.magnitude ?? 2;
+    const entangle = findStatus(member, "entangle");
+    if (entangle) speed -= entangle.magnitude ?? 1;
     if (findStatus(member, "venom") && tierAtLeast(teamSkinTier(enemy, "Toxic"), "full")) speed -= 1;
     if (memberColor(member) === "Mist" && tierAtLeast(memberColorTier(team, member), "pack")) speed += 1;
     if (tierAtLeast(teamColorTier(team, "Desert"), "full") && state.round > 8) speed += 2;

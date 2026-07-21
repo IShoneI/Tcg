@@ -123,4 +123,26 @@ export const SAMPLE_HERDS: PublishedHerd[] = [
     "A mixed pack: Apres freeze pressure backed by Coral tides",
     ["Apres", "Apres", "Apres", "Coral", "Coral", "Coral"]
   ),
+  createSample(
+    "prism-wall",
+    "The Prism Wall",
+    "Community Showcase",
+    "Cristalline",
+    "Charcoal",
+    ["Defender", "Defender", "Defender", "Defender", "Tracker", "Mender"],
+    3,
+    "#a78bfa",
+    "A crystal turtle that reflects everything thrown at it"
+  ),
+  createSample(
+    "savanna-stampede",
+    "Savanna Stampede",
+    "Community Showcase",
+    "Savanna",
+    "Tropic",
+    ["Warrior", "Tracker", "Mystic", "Stalker", "Tracker", "Tracker"],
+    2,
+    "#fbbf24",
+    "Coordinated focus-fire that tramples wounded prey"
+  ),
 ];

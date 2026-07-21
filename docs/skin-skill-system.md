@@ -104,12 +104,12 @@ struck). One proc per skin per team per round.
 | **Toxic** — Envenom | DoT 4/round for 2 rounds, guard-ignoring | 2 dmg, 1 round | 4 dmg, 2 rounds (current) | Venom also reduces target healing 20% | **Neurotoxin**: venom on 2 stacks slows target (−2 speed) |
 | **Elektra** — Arc | First strike arcs lightning to a second enemy | Arc 3 | Arc 5 (current) | Arc 5 to two extra enemies | **Overload**: arcs also drain 1 Clay from the enemy pool (once/round) |
 | **Coral** — Tides | End-of-round healing to actives | Tide 2 | Tide 3 + first heal +6 (current) | Tide 4, also cures one Chill/Venom stack per round | **Spring tide**: once per match, fully cleanse team statuses |
-| **Oceania** — Undertow | Positional drag | Substitutions against you cost +0 (no effect solo) | Once/round your strike on a Wing pulls it to Vanguard next round | Undertow also −1 enemy speed that round | **Riptide**: once per match force an enemy substitution |
-| **Cristalline** — Facet | Reflect a share of received strike damage | Reflect 10% of first hit | Reflect 15% of first hit | Reflect 15% of first two hits | **Prism**: reflects also splash 3 to attacker's neighbour |
-| **Savanna** — Pack Hunt | Focus-fire reward | +2 dmg when two allies strike the same target | +4 dmg | +4 dmg and the pack ignores 10% of target guard | **Stampede**: three-ally focus knocks the target to reserve if it survives below 25% |
-| **Jurassic** — Primal Roar | Intimidation | First enemy striker −1 power this round | −2 power | Roar hits all enemy actives | **Apex Predator**: round 1 roar also delays enemy masteries by one round |
-| **Amazonia** — Overgrowth | Entangle | Enemy substitutions cost +1 Clay | Also first enemy substitution each round is delayed to round end | Entangled actives −1 speed | **Canopy**: your reserves take no fatigue and heal 2/round |
-| **Mirage** — Heat Haze | Evasion | First strike against you each match deals −25% | −25% first strike each round | Also the first arc/venom/chill against you each match fizzles | **Sandstorm**: once per match all strikes against you −25% for a round |
+| **Oceania** — Undertow | Positional drag | — (identity only) | Once/round a strike on a Wing drags it into the Vanguard | Dragged targets also −2 Speed that round | **Riptide**: once per match a strike on the Vanguard sweeps it to reserve |
+| **Cristalline** — Facet | Reflect a share of received strike damage | Reflect 10% of first hit each round | Reflect 15% of first hit | Reflect 15% of first two hits | **Prism**: reflects also splinter 3 into the attacker's ally |
+| **Savanna** — Pack Hunt | Focus-fire reward | +2 dmg when joining a focus-fire | +4 dmg | +4 dmg and the pack ignores 10% of target guard | **Stampede**: once per match a third-ally focus drives a sub-25% survivor to reserve |
+| **Jurassic** — Primal Roar | Intimidation | Enemy Vanguard −1 power each round | −2 power | Roar hits all enemy actives | **Apex Predator**: enemy masteries are silenced in round one |
+| **Amazonia** — Overgrowth | Entangle | Enemy substitutions cost +1 Clay | Substituted-in enemies are snared (−2 Speed) | All enemy actives entangled (−1 Speed) | **Canopy**: your reserves heal 2/round |
+| **Mirage** — Heat Haze | Evasion | First strike against you each match −25% | First strike against you each round −25% | Also the first affliction against you each match fizzles | **Sandstorm**: the first two strikes against you each round −25% |
 
 Rarity discipline: Apres/Toxic (rare) get denial and attrition — the strongest
 verbs. Mirage/Amazonia (common) get defensive value that is excellent at Pack

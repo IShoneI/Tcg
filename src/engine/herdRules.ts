@@ -253,12 +253,30 @@ function bondFor(kind: "skin" | "colour", value: string): HerdBond {
       benefit: "The tide restores active dinos each round; Pride also cleanses afflictions, and a Full Herd surges a spring tide.",
       limitation: "Coral mastery strike damage is reduced by 10%.",
     },
-    oceania: { benefit: "Undertow (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
-    cristalline: { benefit: "Facet reflection (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
-    savanna: { benefit: "Pack Hunt focus-fire (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
-    jurassic: { benefit: "Primal Roar intimidation (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
-    amazonia: { benefit: "Overgrowth entanglement (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
-    mirage: { benefit: "Heat Haze evasion (coming with herd-alpha-2 wave 2).", limitation: "None yet." },
+    oceania: {
+      benefit: "Undertow: once per round a strike on a Wing drags it into the vanguard; a Full Herd's riptide can sweep the vanguard away entirely.",
+      limitation: "The undertow needs a Wing-reaching striker (Stalker or Soarer) to pull.",
+    },
+    cristalline: {
+      benefit: "Facets reflect part of the first strikes received each round; a Full Herd splinters prism shards into the attacker's ally.",
+      limitation: "Reflection is capped at two strikes per round.",
+    },
+    savanna: {
+      benefit: "Pack Hunt: allies striking an already-struck target hit harder; a Full Herd stampede can drive a wounded dino off the line.",
+      limitation: "The bonus needs coordinated focus-fire to trigger.",
+    },
+    jurassic: {
+      benefit: "Primal Roar saps enemy striking power each round; a Full Herd silences enemy masteries in round one.",
+      limitation: "The roar affects only the vanguard below Pride tier.",
+    },
+    amazonia: {
+      benefit: "Overgrowth taxes enemy substitutions and snares substituted-in dinos; a Full Herd's canopy heals reserves.",
+      limitation: "Entanglement slows but never damages.",
+    },
+    mirage: {
+      benefit: "Heat Haze softens the first strikes against the herd each round; Pride makes the first affliction of the match fizzle.",
+      limitation: "The haze fades after the opening strikes of each round.",
+    },
   };
   const colorEffects: Record<string, Pick<HerdBond, "benefit" | "limitation">> = {
     mist: { benefit: "Phantom: Mist dinos act with +1 Speed priority.", limitation: scaling },

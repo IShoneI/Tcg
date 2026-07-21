@@ -218,13 +218,19 @@ function FighterCard({ state }: { state: BattleMemberState }) {
 function statusLabel(status: BattleMemberState["statuses"][number]): string {
   if (status.kind === "chill") return `❄ Chill ×${status.stacks ?? 1}`;
   if (status.kind === "frozen") return "🧊 Frozen";
-  return `☠ Venom ${status.magnitude ?? 4}/round`;
+  if (status.kind === "venom") return `☠ Venom ${status.magnitude ?? 4}/round`;
+  if (status.kind === "undertow") return "🌊 Undertow";
+  if (status.kind === "roar") return `🦖 Roared −${status.magnitude ?? 1} Power`;
+  return "🌿 Entangled";
 }
 
 function statusStyle(kind: BattleMemberState["statuses"][number]["kind"]): string {
   if (kind === "chill") return "bg-sky-400/15 text-sky-300";
   if (kind === "frozen") return "bg-sky-200/20 text-sky-100";
-  return "bg-lime-400/15 text-lime-300";
+  if (kind === "venom") return "bg-lime-400/15 text-lime-300";
+  if (kind === "undertow") return "bg-cyan-400/15 text-cyan-300";
+  if (kind === "roar") return "bg-orange-400/15 text-orange-300";
+  return "bg-emerald-400/15 text-emerald-300";
 }
 
 function ActionPanel({ state, member, plan, onPlan }: { state: BattleState; member: BattleMemberState; plan?: PlannedAction; onPlan: (plan: PlannedAction) => void }) {
