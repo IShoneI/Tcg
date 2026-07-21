@@ -13,7 +13,7 @@ import type { FormationSlot, HerdMember, PublishedHerd, TacticCard } from "@/typ
 
 export type TeamId = "player" | "opponent";
 export type BattlePhase = "planning" | "complete";
-export type BattleActionType = "strike" | "guard" | "substitute" | "mastery" | "team-mastery";
+export type BattleActionType = "strike" | "guard" | "substitute" | "mastery" | "team-mastery" | "play-card";
 
 export interface PlannedAction {
   teamId: TeamId;
@@ -21,6 +21,7 @@ export interface PlannedAction {
   type: BattleActionType;
   targetId?: string;
   reserveId?: string;
+  cardId?: string;
 }
 
 export type StatusKind = "chill" | "frozen" | "venom" | "undertow" | "roar" | "entangle";
@@ -39,6 +40,10 @@ export interface BattleMemberState {
   slot: FormationSlot;
   guarding: boolean;
   roundDamageReduction: number;
+  roundStrikeBonus: number;
+  roundSpeedBonus: number;
+  roundExposure: number;
+  roundGuardPierce: number;
   masteryUsed: boolean;
   defeated: boolean;
   statuses: StatusEffect[];
@@ -53,6 +58,7 @@ export interface BattleTeamState {
   hand: TacticCard[];
   discard: TacticCard[];
   teamMasteryUsed: boolean;
+  cardPlayedThisRound: boolean;
   arcUsed: boolean;
   chillUsed: boolean;
   freeSubstitutionUsed: boolean;
@@ -130,6 +136,10 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     slot: slotById.get(member.id) ?? "reserve",
     guarding: false,
     roundDamageReduction: 0,
+    roundStrikeBonus: 0,
+    roundSpeedBonus: 0,
+    roundExposure: 0,
+    roundGuardPierce: 0,
     masteryUsed: false,
     defeated: false,
     statuses: [] as StatusEffect[],
@@ -148,6 +158,7 @@ function createTeam(herd: PublishedHerd, seed: number): BattleTeamState {
     hand: deck.slice(0, handSize),
     discard: [],
     teamMasteryUsed: false,
+    cardPlayedThisRound: false,
     arcUsed: false,
     chillUsed: false,
     freeSubstitutionUsed: false,
@@ -262,15 +273,19 @@ export function resolveRound(
   applyAuras(state, "player");
   applyAuras(state, "opponent");
 
+  // Legality is checked at execution time, not plan time: an early card play
+  // (e.g. an Instinct) may enable or disable actions that resolve after it.
   const actions = [...playerActions, ...opponentActions]
-    .filter((action) => isActionLegal(state, action))
     .sort((a, b) => actionPriority(state, b) - actionPriority(state, a) || tieBreak(state, a, b));
+  const opensRound = (action: PlannedAction) => action.type === "team-mastery" || action.type === "play-card";
 
-  for (const action of actions.filter((item) => item.type === "team-mastery")) {
+  for (const action of actions.filter(opensRound)) {
+    if (!isActionLegal(state, action)) continue;
     resolveAction(state, action);
   }
-  for (const action of actions.filter((item) => item.type !== "team-mastery")) {
+  for (const action of actions.filter((item) => !opensRound(item))) {
     if (state.winner) break;
+    if (!isActionLegal(state, action)) continue;
     resolveAction(state, action);
     replaceDefeated(state, "player");
     replaceDefeated(state, "opponent");
@@ -345,6 +360,12 @@ function applyAuras(state: BattleState, teamId: TeamId): void {
 function resolveAction(state: BattleState, action: PlannedAction): void {
   const team = state[action.teamId];
   const enemy = state[otherTeam(action.teamId)];
+
+  if (action.type === "play-card") {
+    resolveCardPlay(state, action);
+    return;
+  }
+
   const actor = team.members.find((member) => member.member.id === action.actorId);
   if (!actor || actor.defeated || actor.slot === "reserve") return;
 
@@ -383,9 +404,7 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
   if (action.type === "team-mastery") {
     if (!team.herd.isVeteranHerd || team.teamMasteryUsed || team.clay < 4) return;
     team.clay -= 4;
-    team.teamMasteryUsed = true;
-    for (const member of activeMembers(team)) member.roundDamageReduction += 0.15;
-    state.events.push(event(state, `${team.herd.name} answers the Call of the Veterans.`, action.teamId));
+    teamMasteryEffect(state, action.teamId);
     return;
   }
 
@@ -399,13 +418,26 @@ function resolveAction(state: BattleState, action: PlannedAction): void {
   dealStrike(state, action.teamId, actor, target, 1);
 }
 
+function teamMasteryEffect(state: BattleState, teamId: TeamId): void {
+  const team = state[teamId];
+  team.teamMasteryUsed = true;
+  for (const member of activeMembers(team)) member.roundDamageReduction += 0.15;
+  state.events.push(event(state, `${team.herd.name} answers the Call of the Veterans.`, teamId));
+}
+
 function resolveMastery(state: BattleState, action: PlannedAction, actor: BattleMemberState): void {
   const team = state[action.teamId];
-  const enemy = state[otherTeam(action.teamId)];
   const cost = masteryCost(team);
   if (actor.masteryUsed || actor.member.classState.source !== "on-chain" || team.clay < cost) return;
   team.clay -= cost;
   actor.masteryUsed = true;
+  masteryEffect(state, action.teamId, actor, action.targetId);
+}
+
+function masteryEffect(state: BattleState, teamId: TeamId, actor: BattleMemberState, targetId?: string): void {
+  const team = state[teamId];
+  const enemy = state[otherTeam(teamId)];
+  const action = { teamId, actorId: actor.member.id, targetId };
   const className = actor.member.classState.className;
 
   if (className === "Mender") {
@@ -446,6 +478,85 @@ function resolveMastery(state: BattleState, action: PlannedAction, actor: Battle
   const coralCarrier = memberSkin(actor) === "Coral" && tierAtLeast(memberSkinTier(team, actor), "pack");
   const multiplier = coralCarrier ? base * 0.9 : base;
   dealStrike(state, action.teamId, actor, target, multiplier, true);
+}
+
+/**
+ * Play one tactic card from hand per team per round. Mastery and team-mastery
+ * cards channel the existing effects (respecting their once-per flags);
+ * signature cards fire the owner class's Instinct for the round.
+ */
+function resolveCardPlay(state: BattleState, action: PlannedAction): void {
+  const team = state[action.teamId];
+  const enemy = state[otherTeam(action.teamId)];
+  const index = team.hand.findIndex((candidate) => candidate.id === action.cardId);
+  if (index < 0) return;
+  const card = team.hand[index];
+  if (team.cardPlayedThisRound || team.clay < card.clayCost) return;
+  team.clay -= card.clayCost;
+  team.hand.splice(index, 1);
+  team.discard.push(card);
+  team.cardPlayedThisRound = true;
+  state.events.push(event(state, `${team.herd.name} plays ${card.name}.`, action.teamId));
+
+  if (card.kind === "team-mastery") {
+    if (!team.herd.isVeteranHerd || team.teamMasteryUsed) return;
+    teamMasteryEffect(state, action.teamId);
+    return;
+  }
+
+  if (card.kind === "mastery") {
+    const owner = team.members.find((member) => member.member.id === card.ownerMemberId);
+    if (!owner || owner.defeated || owner.slot === "reserve" || owner.masteryUsed) return;
+    owner.masteryUsed = true;
+    masteryEffect(state, action.teamId, owner, action.targetId);
+    return;
+  }
+
+  const ally = pickInstinctAlly(team, card.ownerMemberId);
+  const className = card.className;
+  if (!ally || !className) return;
+
+  if (className === "Defender") {
+    ally.roundDamageReduction += 0.1;
+    state.events.push(event(state, `${ally.member.name} braces low and takes 10% less damage this round.`, action.teamId, undefined, ally.member.id));
+  } else if (className === "Warrior") {
+    ally.roundStrikeBonus += 4;
+    state.events.push(event(state, `${ally.member.name} strikes 4 harder this round.`, action.teamId, undefined, ally.member.id));
+  } else if (className === "Mender") {
+    const penalty = memberSkin(ally) === "Toxic" && tierAtLeast(memberSkinTier(team, ally), "pack") ? 0.8 : 1;
+    const amount = Math.min(Math.floor(10 * penalty), ally.maxHP - ally.currentHP);
+    ally.currentHP += amount;
+    state.events.push(event(state, `${ally.member.name} is patched up for ${amount}.`, action.teamId, undefined, ally.member.id, amount));
+  } else if (className === "Tracker") {
+    ally.roundSpeedBonus += 2;
+    const drawn = team.deck.shift();
+    if (drawn) {
+      if (team.hand.length < 8) team.hand.push(drawn);
+      else team.discard.push(drawn);
+    }
+    state.events.push(event(state, `${ally.member.name} scouts ahead: +2 Speed and a fresh card.`, action.teamId, undefined, ally.member.id));
+  } else if (className === "Stalker") {
+    ally.roundGuardPierce = Math.max(ally.roundGuardPierce, 0.2);
+    state.events.push(event(state, `${ally.member.name} circles for an opening: strikes ignore 20% of guard this round.`, action.teamId, undefined, ally.member.id));
+  } else if (className === "Mystic") {
+    const exposed = team.members.length > 0
+      ? activeMembers(enemy).find((member) => member.member.id === action.targetId) ?? [...activeMembers(enemy)].sort((a, b) => a.currentHP - b.currentHP)[0]
+      : undefined;
+    if (exposed) {
+      exposed.roundExposure += 0.1;
+      state.events.push(event(state, `${exposed.member.name} is exposed: it takes 10% more damage this round.`, action.teamId, undefined, exposed.member.id));
+    }
+  } else {
+    ally.roundSpeedBonus += 2;
+    ally.roundDamageReduction += 0.05;
+    state.events.push(event(state, `${ally.member.name} rides the updraft: +2 Speed and 5% damage reduction.`, action.teamId, undefined, ally.member.id));
+  }
+}
+
+function pickInstinctAlly(team: BattleTeamState, ownerId?: string): BattleMemberState | undefined {
+  const owner = team.members.find((member) => member.member.id === ownerId);
+  if (owner && !owner.defeated && owner.slot !== "reserve") return owner;
+  return [...activeMembers(team)].sort((a, b) => a.currentHP - b.currentHP)[0];
 }
 
 function dealStrike(
@@ -498,14 +609,16 @@ function dealStrike(
   const packHunting = aSkin === "Savanna" && priorStrikes >= 1;
   let passive = Math.min(target.member.stats.guard * 0.03, 0.3);
   if (packHunting && tierAtLeast(aSkinTier, "pride")) passive *= 0.9;
+  passive *= 1 - actor.roundGuardPierce;
   let guardRate = 0.25;
   if (tColor === "Aqua" && tierAtLeast(tColorTier, "pack")) guardRate = tierAtLeast(tColorTier, "pride") ? 0.3 : 0.27;
   if (memberSkin(target) === "Elektra" && tierAtLeast(tSkinTier, "pack")) guardRate -= 0.05;
-  const guarded = target.guarding ? guardRate : 0;
+  const guarded = target.guarding ? guardRate * (1 - actor.roundGuardPierce) : 0;
   const exposedVanguard =
     tColor === "Volcanic" && tierAtLeast(tColorTier, "pack") && state.round === 1 && target.slot === "vanguard" ? 0.05 : 0;
-  const reduction = Math.max(0, Math.min(0.75, passive + guarded + target.roundDamageReduction - exposedVanguard));
+  const reduction = Math.max(0, Math.min(0.75, passive + guarded + target.roundDamageReduction - exposedVanguard - target.roundExposure));
   let damage = Math.max(1, Math.round(raw * (1 - reduction)));
+  damage += actor.roundStrikeBonus;
   if (packHunting) {
     damage += tierAtLeast(aSkinTier, "pack") ? 4 : 2;
     state.events.push(event(state, `${actor.member.name} joins the pack hunt on ${target.member.name}.`, teamId, actor.member.id, target.member.id));
@@ -717,6 +830,19 @@ function tickStatuses(state: BattleState, teamId: TeamId): void {
 
 export function isActionLegal(state: BattleState, action: PlannedAction): boolean {
   const team = state[action.teamId];
+  if (action.type === "play-card") {
+    if (team.cardPlayedThisRound) return false;
+    const card = team.hand.find((candidate) => candidate.id === action.cardId);
+    if (!card || team.clay < card.clayCost) return false;
+    if (card.kind === "mastery") {
+      const owner = team.members.find((member) => member.member.id === card.ownerMemberId);
+      return !!owner && !owner.defeated && owner.slot !== "reserve" && !owner.masteryUsed && owner.member.classState.source === "on-chain";
+    }
+    if (card.kind === "team-mastery") {
+      return team.herd.isVeteranHerd && !team.teamMasteryUsed;
+    }
+    return true;
+  }
   const actor = team.members.find((member) => member.member.id === action.actorId);
   if (!actor || actor.defeated || actor.slot === "reserve") return false;
   if (action.type === "strike") {
@@ -853,22 +979,29 @@ function resetRound(team: BattleTeamState): void {
   team.arcUsed = false;
   team.chillUsed = false;
   team.undertowUsed = false;
+  team.cardPlayedThisRound = false;
   team.reflectsUsed = 0;
   team.hazeRoundUsed = 0;
   team.struckThisRound = {};
   for (const member of team.members) {
     member.guarding = false;
     member.roundDamageReduction = 0;
+    member.roundStrikeBonus = 0;
+    member.roundSpeedBonus = 0;
+    member.roundExposure = 0;
+    member.roundGuardPierce = 0;
   }
 }
 
 function actionPriority(state: BattleState, action: PlannedAction): number {
   if (action.type === "team-mastery") return 100;
+  if (action.type === "play-card") return 90;
   const team = state[action.teamId];
   const enemy = state[otherTeam(action.teamId)];
   const member = team.members.find((candidate) => candidate.member.id === action.actorId);
   let speed = member?.member.stats.speed ?? 0;
   if (member) {
+    speed += member.roundSpeedBonus;
     const chill = findStatus(member, "chill");
     if (chill) speed -= 2 * (chill.stacks ?? 1);
     const undertow = findStatus(member, "undertow");

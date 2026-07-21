@@ -178,11 +178,13 @@ describe("AI opponent", () => {
     expect(state.phase).toBe("complete");
   });
 
-  it("plans exactly one action per active member", () => {
+  it("plans exactly one member action per active member plus at most one card play", () => {
     const state = createBattle(HERD_A, HERD_B, 5);
     const actions = planAIActions(state, "opponent", "medium");
-    expect(actions).toHaveLength(activeMembers(state.opponent).length);
-    const actors = new Set(actions.map((action) => action.actorId));
-    expect(actors.size).toBe(actions.length);
+    const memberActions = actions.filter((action) => action.type !== "play-card");
+    expect(memberActions).toHaveLength(activeMembers(state.opponent).length);
+    const actors = new Set(memberActions.map((action) => action.actorId));
+    expect(actors.size).toBe(memberActions.length);
+    expect(actions.filter((action) => action.type === "play-card").length).toBeLessThanOrEqual(1);
   });
 });

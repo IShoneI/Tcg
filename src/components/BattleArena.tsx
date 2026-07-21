@@ -26,13 +26,19 @@ interface BattleArenaProps {
 
 export default function BattleArena({ battle, onChange, planOpponent, onExit, exitLabel = "Change herds", eyebrowExtra }: BattleArenaProps) {
   const [plans, setPlans] = useState<Record<string, PlannedAction>>({});
+  const [cardPlan, setCardPlan] = useState<string | null>(null);
 
   const resolve = () => {
     const completedPlans = activeMembers(battle.player).map((member) =>
       plans[member.member.id] ?? defaultStrike(battle, member)
     );
+    if (cardPlan) {
+      const anchor = activeMembers(battle.player)[0];
+      completedPlans.push({ teamId: "player", actorId: anchor?.member.id ?? "", type: "play-card", cardId: cardPlan });
+    }
     onChange(resolveRound(battle, completedPlans, planOpponent(battle)));
     setPlans({});
+    setCardPlan(null);
   };
 
   return (
@@ -66,6 +72,7 @@ export default function BattleArena({ battle, onChange, planOpponent, onExit, ex
                 <ActionPanel key={member.member.id} state={battle} member={member} plan={plans[member.member.id]} onPlan={(plan) => setPlans((current) => ({ ...current, [member.member.id]: plan }))} />
               ))}
             </div>
+            <HandPanel battle={battle} cardPlan={cardPlan} onPick={setCardPlan} />
             <button disabled={!!battle.winner} onClick={resolve} className="mt-4 w-full rounded-xl bg-amber-300 px-5 py-3 font-black text-slate-950 hover:bg-amber-200 disabled:opacity-40">Reveal plans</button>
           </div>
           <BattleLog state={battle} />
@@ -172,6 +179,52 @@ function ActionPanel({ state, member, plan, onPlan }: { state: BattleState; memb
           <button onClick={() => onPlan({ teamId: "player", actorId: member.member.id, type: "team-mastery" })} className="col-span-2 rounded-lg bg-amber-300 px-2 py-2 font-bold text-slate-950">Call Veterans · 4</button>
         )}
       </div>
+    </div>
+  );
+}
+
+const INSTINCT_TEXT: Record<string, string> = {
+  Defender: "Ally takes 10% less damage this round",
+  Warrior: "Ally strikes +4 this round",
+  Mender: "Heal the owner for 10",
+  Tracker: "+2 Speed and draw a card",
+  Stalker: "Ally's strikes ignore 20% of guard",
+  Mystic: "Weakest enemy takes 10% more damage",
+  Soarer: "+2 Speed and 5% damage reduction",
+};
+
+function HandPanel({ battle, cardPlan, onPick }: { battle: BattleState; cardPlan: string | null; onPick: (id: string | null) => void }) {
+  const team = battle.player;
+  if (team.hand.length === 0) return null;
+  return (
+    <div className="mt-4 border-t border-white/10 pt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-bold">Hand <span className="text-xs font-normal text-slate-500">· play one card per round</span></h3>
+        <span className="text-xs text-slate-500">{team.deck.length} in deck · {team.discard.length} discarded</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {team.hand.map((card) => {
+          const selected = cardPlan === card.id;
+          const affordable = team.clay >= card.clayCost;
+          const mechanic = card.kind === "signature" && card.className ? INSTINCT_TEXT[card.className] : card.description;
+          return (
+            <button
+              key={card.id}
+              disabled={!affordable}
+              onClick={() => onPick(selected ? null : card.id)}
+              className={`min-w-[150px] max-w-[170px] shrink-0 rounded-xl border p-3 text-left transition ${selected ? "border-amber-300 bg-amber-300/10" : affordable ? "border-white/10 bg-slate-900 hover:border-white/30" : "border-white/5 bg-slate-900/50 opacity-50"}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-black leading-tight">{card.name}</p>
+                <span className="rounded-full bg-amber-300/15 px-1.5 text-[10px] font-black text-amber-300">{card.clayCost}</span>
+              </div>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{card.kind}</p>
+              <p className="mt-1 text-[11px] leading-snug text-slate-400">{mechanic}</p>
+            </button>
+          );
+        })}
+      </div>
+      {cardPlan && <p className="mt-2 text-xs text-amber-300">Card queued — it resolves before any strikes land.</p>}
     </div>
   );
 }

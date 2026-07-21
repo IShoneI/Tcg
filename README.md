@@ -38,6 +38,7 @@ A herd whose members share a skin fights with that skin's battlefield twist. Eac
 - Three active members: Vanguard, Left Wing and Right Wing.
 - The remaining herd members are reserves and may substitute during battle.
 - Each round the player plans one action per active member: strike, guard, substitute or individual Mastery where eligible.
+- The herd's signature deck is live: each team draws a hand and may play one tactic card per round. Signature cards fire class Instincts, and drawn Mastery or team-Mastery cards channel those effects without spending a member's action.
 - Clay is the shared action resource and grows each round.
 - Vanguard protects the wings from normal targeting; Soarers and Stalkers can reach wings directly.
 - Fatigue and a format round cap stop defensive stalemates.

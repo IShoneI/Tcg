@@ -260,6 +260,32 @@ Ancients are too singular to be ordinary herd members. Three roles, phased:
 Ownership is revalidated the same way Mastered classes are (on-chain check at
 publish + periodic revalidation).
 
+## 11. Item collections (Clay, Claymakers, Cosmetics)
+
+The three resource collections are in-game item mechanics, not display pieces:
+
+- **Clay** (six colours + gold) — the battle resource already carries this
+  name. Future: holding clay items of your herd's colour grants economy riders
+  (e.g. +1 opening Clay, colour-matched card discounts); Gold Clay is
+  colour-agnostic.
+- **Claymakers** — the forging tool. On-chain they bind classes (already
+  reflected as Mastered); in-game they become the crafting path for upgrading
+  tactic cards. First (single use) / Deluxe (5 uses) / Limited (unlimited,
+  24h cooldown) map naturally to forge charges.
+- **Cosmetics** — two very different tiers:
+  - **Body armour** in three slots — head, body, feet — becomes the `gear`
+    TacticCard kind (already in the type system): equipping armour to a herd
+    member adds a persistent slot rider (head: status resistance, body: flat
+    damage reduction, feet: speed/substitution agility). One item per slot
+    per dino, bounded like colour boosts.
+  - **Artifacts** (38 exist) — really special: once-per-match relic effects
+    on the power level of apex riders, the collector-economy sibling of the
+    Ancient Patron slot.
+
+All item effects are ownership-gated to the holding wallet and revalidated
+like classes. Implementation order: gear slots (armour) first — the card kind
+and deck plumbing already exist — then clay economy riders, then artifacts.
+
 ## Sources
 
 - HowRare.is Claynosaurz trait tables — https://howrare.is/claynosaurz

@@ -1,4 +1,4 @@
-import { activeMembers, legalStrikeTargets, masteryCost, reserveMembers } from "@/engine/battleEngine";
+import { activeMembers, isActionLegal, legalStrikeTargets, masteryCost, reserveMembers } from "@/engine/battleEngine";
 import type { BattleState, PlannedAction, TeamId } from "@/engine/battleEngine";
 
 export type AIDifficulty = "easy" | "medium" | "hard";
@@ -42,6 +42,19 @@ export function planAIActions(
 
   if (team.herd.isVeteranHerd && !team.teamMasteryUsed && team.clay >= 4 && state.round >= 3 && actions.length > 0) {
     actions[0] = { ...actions[0], type: "team-mastery", targetId: undefined, reserveId: undefined };
+  }
+
+  // Play one affordable card: hard AI always looks; others keep 2 Clay spare.
+  if (difficulty !== "easy") {
+    const anchor = activeMembers(team)[0];
+    for (const card of team.hand) {
+      if (difficulty !== "hard" && team.clay < card.clayCost + 2) continue;
+      const play: PlannedAction = { teamId, actorId: anchor?.member.id ?? "", type: "play-card", cardId: card.id };
+      if (isActionLegal(state, play)) {
+        actions.push(play);
+        break;
+      }
+    }
   }
   return actions;
 }
